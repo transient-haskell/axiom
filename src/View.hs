@@ -682,8 +682,8 @@ instance   FormInput JSBuilder  where
 
 
 
-eventOn :: View JSBuilder IO a -> Event IO b -> View JSBuilder IO a
-eventOn w event = View $ do
+raiseEvent :: View JSBuilder IO a -> Event IO b -> View JSBuilder IO a
+raiseEvent w event = View $ do
    action <- gets process
    FormElm render mx <- runView  w
    let render' = do
@@ -692,8 +692,8 @@ eventOn w event = View $ do
    return $ FormElm render' mx
 
 
-ask action e = do
-     let iteration= ask action e
+runWidget action e = do
+     let iteration= runWidget action e
      (FormElm render mx, s) <- runStateT (runView action) mFlowState0{process = iteration}
      build render e
      return ()

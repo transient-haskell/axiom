@@ -8,13 +8,13 @@ import Control.Applicative
 
 
 main= do
-  withElem "idelem" $  ask action
+  withElem "idelem" $  runWidget action
   return ()
   where
   action :: View JSBuilder IO ()
   action = do
-     r  <- norefresh ((+) <$> inputInt Nothing `eventOn` OnKeyPress <++ br
-                         <*> inputInt Nothing `eventOn` OnKeyPress <++ br)
+     r  <- norefresh ((+) <$> inputInt Nothing `raiseEvent` OnKeyPress <++ br
+                         <*> inputInt Nothing `raiseEvent` OnKeyPress <++ br)
      refresh $ (nelem "b" `child`  (show r)) ++> noWidget
 
 
