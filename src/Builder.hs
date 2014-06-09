@@ -18,6 +18,7 @@ module Builder where
 import Data.Typeable
 import Haste
 import Haste.DOM
+import Haste.Foreign(ffi)
 import Data.Maybe
 import Data.Monoid
 import Unsafe.Coerce
@@ -60,9 +61,9 @@ attr tag (n, v)=JSBuilder $ \e -> do
 
 
 nelem s= JSBuilder $ \e ->do
-    e' <- newElem s
-    addChild e' e
-    return e'
+        e' <- newElem s
+        addChild e' e
+        return e'
 
 child :: ToElem a => JSBuilder -> a -> JSBuilder
 child me ch= JSBuilder $ \e' -> do
@@ -71,19 +72,14 @@ child me ch= JSBuilder $ \e' -> do
         r <- build t e
         return e
 
-addEvent e' event action= JSBuilder $ \e -> do
-        e <- build e' e
-        onEvent e event action
-        setProp e "value" =<< return . fromJust =<< getValue e
-        focus e
-        return e
+addEvent :: JSBuilder -> Event IO b -> IO () -> JSBuilder
+addEvent be event action= JSBuilder $ \e -> do
+        e' <- build be e
+        onEvent e event $ unsafeCoerce $ action >> focus e
+        return e'
 
---unselect :: Elem -> IO ()
---unselect = ffi  "(function(e){e.onmouseup=function(){return false};})"
+elemsByTagName :: String -> IO [Elem]
+elemsByTagName = ffi  "(function(s){document.getElementsByTagName(s);})"
 
-addAttr be prop value= JSBuilder $ \e -> do
-        e'' <- build be e
-        setAttr e'' prop value
-        return e''
-
+br= nelem "br"
 

@@ -645,9 +645,6 @@ wraw x= View . return . FormElm x $ Just ()
 -------------------------
 
 
-
-
-
 instance   FormInput JSBuilder  where
     toByteString  =  error "toByteString not defined"
     fromStr = toElem
@@ -685,131 +682,41 @@ instance   FormInput JSBuilder  where
 
 
 
+eventOn :: View JSBuilder IO a -> Event IO b -> View JSBuilder IO a
+eventOn w event = View $ do
+   action <- gets process
+   FormElm render mx <- runView  w
+   let render' = do
+        addEvent (render :: JSBuilder) event  action
+--        addAttr render "autofocus" ""
+   return $ FormElm render' mx
 
 
---  mempty `child` (melem "world" `attr` ("i","1") <> melem "world1"  `attr` ("atr1", "again") )
+ask action e = do
+     let iteration= ask action e
+     (FormElm render mx, s) <- runStateT (runView action) mFlowState0{process = iteration}
+     build render e
+     return ()
 
 
---instance Monad JSBuilder where
---   (>>=) x y= JSM $ mappend (unwrap x) (unwrap $ y undefined)
---   return  = const $ JSM mempty
+refresh w= View $ do
+    id <- genNewId
+    me <- elemById id
+    FormElm render mx <- runView w
+    case me of
 
+      Just e ->  do
+         clearChildren e
+         let JSBuilder be= render
+         let render'= JSBuilder $ const $ be e
+         return (FormElm ( render') mx)
+      Nothing -> return $ FormElm (nelem "div" `attr` ("id",id) `child` render) mx
 
---attrs :: Builder -> atribs -> Builder
+norefresh w = View $ do
+    id <- genNewId
+    me <- elemById  id
+    FormElm render mx <- runView w
+    case me of
+     Nothing -> return $ FormElm (nelem "div" `attr` ("id",id) `child` render) mx
+     Just _ ->  return $ FormElm mempty mx
 
---
---instance Monad m => Monoid (Elem -> IO Elem) where
---    mappend = (>=>)
---    mempty  = return
---
---
---instance  FormInput (Elem -> IO Elem) where
---    toByteString  =  error "toByteString not defined"
---    ftag n v =  (\e -> newElem n) `child` v
---
---    attrs tag  [] = tag
---    attrs tag ((n,v):attribs) = attrs (\e -> do
---        tag' <- tag e
---        setAttr tag' n v
---        return e)
---         attribs
---
---
---    inred msg=  ftag "b" msg `attrs` [("style","color:red")]
---
---    finput n t v f c=
---       let
---        tag= ftag "input" mempty `attrs` [("type",  t), ("name",  n), ("value",  v)]
---        tag1= if f then tag `attrs` [("checked", "")] else tag
---       in case c of Just s -> tag1 `attrs` [("onclick", s)] ; _ -> tag1
---
---    ftextarea nam text=
---        ftag "textarea" mempty `attrs` [("name",  nam)] `child` text
---
---
---    fselect nam list = ftag "select" mempty `attrs` [("name", nam)] `child` list
---    foption  name v msel=
---      let tag=  ftag "option" mempty `attrs` [("value", name)]  `child`  v
---      in if msel then tag `attrs` [("selected", "")] else tag
---
---
---    formAction action method1 form = ftag "form" mempty `attrs` [("acceptCharset", "UTF-8")
---                                                         ,( "action", action)
---                                                         ,("method",  method1)]
---                                                         `child` form
---
---    fromStr= const . newTextElem
---    fromStrNoEncode  = const . newTextElem
---    flink  v str = ftag "a" mempty `attrs` [("href",  v)] `child` str
---
---
---
-
-
-
---child :: ToElem a => (Elem -> IO Elem) -> a -> Elem -> IO Elem
---child me ch= \e' -> do
---        e <- me e'
---        t <- toElem ch e
---        addChild e t
---        return e
---
---class ToElem a where
---  toElem :: a -> (Elem -> IO Elem)
---
---instance ToElem String where toElem = const . newTextElem
---
---instance ToElem (Elem -> IO Elem) where toElem = id
-
-
-------------------
-
---instance ToElem (Elem -> IO Elem) where toElem = \e
-
---instance  FormInput (IO Elem) where
---    toByteString  =  error "toByteString not defined"
---    ftag n v = newElem n `child` v
---
---    inred msg=  ftag "b" msg `attrs` [("style","color:red")]
---
---    finput n t v f c=
---       let
---        tag= ftag "input" mempty `attrs` [("type",  t), ("name",  n), ("value",  v)]
---        tag1= if f then tag `attrs` [("checked", "")] else tag
---       in case c of Just s -> tag1 `attrs` [("onclick", s)] ; _ -> tag1
---
---    ftextarea nam text=
---        ftag "textarea" mempty `attrs` [("name",  nam)] `child` text
---
---
---    fselect nam list = ftag "select" mempty `attrs` [("name", nam)] `child` list
---    foption  name v msel=
---      let tag=  ftag "option" mempty `attrs` [("value", name)]  `child`  v
---      in if msel then tag `attrs` [("selected", "")] else tag
---
---
---    formAction action method1 form = ftag "form" mempty `attrs` [("acceptCharset", "UTF-8")
---                                                         ,( "action", action)
---                                                         ,("method",  method1)]
---                                                         `child` form
---
---    fromStr= newTextElem
---    fromStrNoEncode  = newTextElem
---    flink  v str = ftag "a" mempty `attrs` [("href",  v)] `child` str
---
---    attrs tag  [] = tag
---    attrs tag ((n,v):attribs) = attrs (tag >>= \ e -> setAttr e n v >> return e) attribs
---
---mempty= newTextElem ""
---
---child me ch=  do
---        e <- me
---        t <- toElem ch
---        addChild e t
---        return e
---
---class ToElem a where
---  toElem :: a -> IO Elem
---
---instance ToElem String where toElem= newTextElem
---
