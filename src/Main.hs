@@ -13,11 +13,18 @@ main= do
   where
   action :: View JSBuilder IO ()
   action = do
-     r  <- norefresh ((+) <$> inputInt Nothing `raiseEvent` OnKeyPress <++ br
-                         <*> inputInt Nothing `raiseEvent` OnKeyPress <++ br)
-     refresh $ (nelem "b" `child`  (show r)) ++> noWidget
+     r <- norefresh $ (+)
+            <$> fromStr "first number  "
+            ++> inputInt Nothing `raiseEvent` OnKeyUp <++ br
+            <*> fromStr "second number "
+            ++> inputInt Nothing `raiseEvent` OnKeyUp <++ br
+     refresh $ fromStr "result: " ++>  b (show r) ++> noWidget
 
 
+nelemc :: ToElem a => String ->  a -> JSBuilder
+nelemc tag cont= nelem tag `child` cont
 
+b= nelemc "b"
 
+(<<) ce cont= ce cont
 

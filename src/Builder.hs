@@ -59,7 +59,6 @@ attr tag (n, v)=JSBuilder $ \e -> do
         setAttr tag' n v
         return tag'
 
-
 nelem s= JSBuilder $ \e ->do
         e' <- newElem s
         addChild e' e
@@ -78,8 +77,11 @@ addEvent be event action= JSBuilder $ \e -> do
         onEvent e event $ unsafeCoerce $ action >> focus e
         return e'
 
-elemsByTagName :: String -> IO [Elem]
-elemsByTagName = ffi  "(function(s){document.getElementsByTagName(s);})"
+--elemsByTagName :: String -> IO [Elem]
+--elemsByTagName = ffi "(function(s){document.getElementsByTagName(s);})"
+
+parentNode :: Elem -> IO Elem
+parentNode e= ffi "(function(e){return e.parentNode;})"
 
 br= nelem "br"
 

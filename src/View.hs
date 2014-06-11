@@ -393,13 +393,14 @@ genNewId=  do
 
       return $ 'p':show n++prefseq  
 
--- | get the next ideitifier that will be created by genNewId
-getNextId :: (StateType m ~ MFlowState,MonadState  m) =>  m String
-getNextId=  do
-      st <- get
-      let n= mfSequence st
-          prefseq=  mfPrefix st
-      return $ 'p':show n++prefseq
+
+---- | get the next ideitifier that will be created by genNewId
+--getNextId :: (StateType m ~ MFlowState,MonadState  m) =>  m String
+--getNextId=  do
+--      st <- get
+--      let n= mfSequence st
+--          prefseq=  mfPrefix st
+--      return $ 'p':show n++prefseq
 
 
 -- | Display a text box and return a non empty String
@@ -699,24 +700,74 @@ runWidget action e = do
      return ()
 
 
+--refresh w= View $ do
+--    id <- genNewId
+--    me <- elemById id
+--    FormElm render mx <- runView w
+--    case me of
+--      Just e ->  do
+--         clearChildren e
+--         let JSBuilder be= render
+--         let render'= JSBuilder . const $ be e
+--
+--         return (FormElm ( render') mx)
+--      Nothing -> return $ FormElm (nelem "div" `attr` ("id",id) `child` render) mx
+
 refresh w= View $ do
     id <- genNewId
     me <- elemById id
     FormElm render mx <- runView w
     case me of
+      Just e -> do
+         setAttr e "id" $ id <> "old"
+         let render'= render
+                          <> JSBuilder (\e' -> do
+--                                   parent <- parentNode e
+--                                   chs    <- getChildren parent :: IO [Elem]
+--                                   atr    <- getAttr( Prelude.head chs) "id"
+--                                   print "hello"
+--                                   print atr
+--                                   removeChild e parent  -- remove the old node
+                                   clearChildren e
+                                   return e')
+         return $ FormElm (nelem "div" `attr` ("id",id) `child` render') mx
 
-      Just e ->  do
-         clearChildren e
-         let JSBuilder be= render
-         let render'= JSBuilder $ const $ be e
-         return (FormElm ( render') mx)
       Nothing -> return $ FormElm (nelem "div" `attr` ("id",id) `child` render) mx
+
+--norefresh w = View $ do
+--    id <- genNewId
+--    me <- elemById  id
+--    FormElm render mx <- runView w
+--    case me of
+--     Nothing -> return $ FormElm (nelem "div" `attr` ("id",id) `child` render) mx
+--     Just _ ->  return $ FormElm mempty mx
 
 norefresh w = View $ do
     id <- genNewId
-    me <- elemById  id
-    FormElm render mx <- runView w
-    case me of
-     Nothing -> return $ FormElm (nelem "div" `attr` ("id",id) `child` render) mx
-     Just _ ->  return $ FormElm mempty mx
 
+    FormElm render mx <- runView w
+
+    me <- elemById id
+    case me of
+     Nothing -> do
+        midold <- elemById $ id <> "old"
+        case  midold of
+
+           Nothing -> return $ FormElm (nelem "div" `attr` ("id",id) `child` render) mx
+           Just elem  ->  do -- found the old node. it has been renamed by a previus "refresh"
+               let render'= JSBuilder $ \e -> do
+                                   parent <- parentNode elem
+                                   removeChild elem parent  -- remove the old node
+                                   setAttr elem  "id" id
+                                   addChild elem e
+                                   return e
+               return $ FormElm render' mx
+     Just _ -> -- the node is there, keep it
+           return $ FormElm mempty mx
+
+
+
+
+
+--updateWith expr :: set value with a expression
+--  expr executed after the main expr.
