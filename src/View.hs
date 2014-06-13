@@ -27,6 +27,9 @@ import Data.Maybe
 import Haste.DOM
 import Haste
 import Unsafe.Coerce
+import System.IO.Unsafe
+import Data.IORef
+
 
 import Builder
 -- | @View v m a@ is a widget (formlet)  with formatting `v`  running the monad `m` (usually `IO`) and which return a value of type `a`
@@ -69,12 +72,13 @@ import Builder
 --  use 'cachedByKey' if you want to avoid repeated IO executions.
 data NeedForm= HasForm | HasElems  | NoElems deriving Show
 data MFlowState= MFlowState { mfPrefix :: String,mfSequence :: Int
-                            ,  needForm :: NeedForm, process :: IO ()}
+                            ,  needForm :: NeedForm, process :: IO ()
+                            ,refreshes:: [(String, JSBuilder)]}
 type WState view m = StateT MFlowState m
 data FormElm view a = FormElm view (Maybe a)
 newtype View v m a = View { runView :: WState v m (FormElm v a)}
 
-mFlowState0= MFlowState "" 0 NoElems  (return ())
+mFlowState0= MFlowState "" 0 NoElems  (return ()) []
 --
 --
 --instance  FormInput v => MonadLoc (View v IO)  where
@@ -124,25 +128,32 @@ instance (Monoid view, Functor m, Monad m) => Alternative (View view m) where
   empty= View $ return $ FormElm mempty Nothing
   View f <|> View g= View $ do
                    FormElm form1 x <- f
-
                    FormElm form2 y <- g
-                  
                    return $ FormElm (form1 <> form2) (x <|> y) 
 
 
-   
-instance  (FormInput view, Monad m) => Monad (View view m) where
-    View x >>= f = View $ do
-           FormElm form1 mk <- x   
+strip st x= View $ put st >> runView x >>= \(FormElm _ mx) -> return $ FormElm mempty mx
+
+instance  Monad (View JSBuilder IO) where
+    x >>= f = View $ do
+           id <- genNewId
+           modify $ \st -> st{process= runWidgetId ((strip st x) >>=f) id}
+           FormElm form1 mk <- runView x
+           let form1'= form1 <> (JSBuilder $ \e -> do
+                me <- elemById id
+                case me of
+                  Nothing ->  do
+                     e' <- newElem "span"
+                     setAttr e' "id" id
+                     addChild e' e
+                     return e'
+                  Just _ -> return e)
            case mk of
              Just k  -> do
-                 
                 FormElm form2 mk <- runView $ f k
-
-
-                return $ FormElm (form1 <> form2) mk
+                return $ FormElm (form1' `child`  form2) mk
              Nothing -> 
-                return $ FormElm form1 Nothing
+                return $ FormElm  form1'  Nothing
                         
 
     return = View .  return . FormElm  mempty . Just
@@ -151,7 +162,7 @@ instance  (FormInput view, Monad m) => Monad (View view m) where
 
   
 
-instance (FormInput v,Monad m, Functor m, Monoid a) => Monoid (View v m a) where
+instance (FormInput v,Monad (View v m), Monad m, Functor m, Monoid a) => Monoid (View v m a) where
   mappend x y = mappend <$> x <*> y  -- beware that both operands must validate to generate a sum
   mempty= return mempty
 
@@ -178,7 +189,7 @@ wcallback (View x) f = View $ do
 
 
 
-instance  (FormInput view,Monad m) => MonadState (View view m) where
+instance  (FormInput view,Monad m,Monad (View view m)) => MonadState (View view m) where
   type StateType (View view m) = MFlowState
   get = View $  get >>=  return . FormElm mempty . Just 
   put st = View $  put st >>=  return . FormElm mempty . Just 
@@ -188,7 +199,7 @@ instance  (FormInput view,Monad m) => MonadState (View view m) where
 --  put st = FlowM $  put st >>= \x ->  return $ FormElm [] $ Just x
 
 
-instance (FormInput view,MonadIO m) => MonadIO (View view m) where
+instance (FormInput view,Monad (View view m),MonadIO m) => MonadIO (View view m) where
     liftIO io= let x= liftIO io in x `seq` lift x -- to force liftIO==unsafePerformIO on the Identity monad
 
 
@@ -635,10 +646,10 @@ stop :: (FormInput view,
 stop= Control.Applicative.empty
 
 -- | Render a Show-able  value and return it
-wrender
-  :: (Monad m, Functor m, Show a, FormInput view) =>
-     a -> View view m a
-wrender x = (fromStr $ show x) ++> return x
+--wrender
+--  :: (Monad m, Functor m, Show a,Monad (View view m), FormInput view) =>
+--     a -> View view m a
+--wrender x = (fromStr $ show x) ++> return x
 
 -- | Render raw view formatting. It is useful for displaying information.
 wraw :: Monad m => view -> View view m ()
@@ -693,78 +704,115 @@ raiseEvent w event = View $ do
    return $ FormElm render' mx
 
 
+runWidgetId ac id=  withElem id $ \e -> clearChildren e >> runWidget ac e
+
 runWidget action e = do
      let iteration= runWidget action e
      (FormElm render mx, s) <- runStateT (runView action) mFlowState0{process = iteration}
+     let torefresh = refreshes s
+--     mapM_ keepRefreshed torefresh
+--     clearChildren e
      build render e
+     mapM renderRefresh torefresh
      return ()
 
+
+
+update w = View $ do
+    id <- genNewId
+    me <- elemById id
+    sw@(FormElm render mx) <- runView w
+    case me of
+      Nothing -> do
+        return $ FormElm (nelem "span" `attrs` [("id",id)] `child` render) mx
+      Just e -> clearChildren e >> return sw
+
+renderRefresh (id, render)= withElem id $ build render
+
+keepRefreshed (id, _)= do
+    me <- elemById id
+    case me of
+      Nothing -> return ()
+      Just e -> do
+           p <- parent e
+           removeChild e p
+
+keep w=  View   $ do
+    id <- genNewId
+    me <- elemById id
+    FormElm render mx <- runView w
+    case me of
+      Nothing -> do
+         modify $ \st -> st{ refreshes= (id,error "render"):refreshes st}
+         return $ FormElm (nelem "span" `attr` ("id",id) `child` render) mx
+      Just e -> do
+        let render'= JSBuilder $ \e' -> addChild e e' >> print "keep" >> return e'
+        return $ FormElm render' mx
+
+
+refresh w= View $ do
+   id <- genNewId
+   me <- elemById id
+   FormElm render mx <- runView w
+   case me of
+     Just e -> do
+        clearChildren e
+        modify $ \st -> st{ refreshes= (id,render):refreshes st}
+        return $ FormElm mempty mx
+     Nothing -> return $ FormElm (nelem "span" `attr` ("id",id) `child` render) mx
+
+
+
+
+norefresh w= View $ do
+   id <- genNewId
+   me <- elemById id
+   FormElm render mx <- runView w
+   case me of
+     Just e ->  return $ FormElm mempty mx
+     Nothing -> return $ FormElm (nelem "span" `attr` ("id",id) `child` render) mx
 
 --refresh w= View $ do
 --    id <- genNewId
 --    me <- elemById id
 --    FormElm render mx <- runView w
 --    case me of
---      Just e ->  do
---         clearChildren e
---         let JSBuilder be= render
---         let render'= JSBuilder . const $ be e
+--      Just e -> do
+--         setAttr e "id" $ id <> "old"
+--         let render'= render
+--                          <> JSBuilder (\e' -> do
+--                                   par <- parent e
+--                                   removeChild e par  -- remove the old node
+--                                   return e')
+--         return $ FormElm (nelem "div" `attr` ("id",id) `child` render') mx
 --
---         return (FormElm ( render') mx)
 --      Nothing -> return $ FormElm (nelem "div" `attr` ("id",id) `child` render) mx
 
-refresh w= View $ do
-    id <- genNewId
-    me <- elemById id
-    FormElm render mx <- runView w
-    case me of
-      Just e -> do
-         setAttr e "id" $ id <> "old"
-         let render'= render
-                          <> JSBuilder (\e' -> do
---                                   parent <- parentNode e
---                                   chs    <- getChildren parent :: IO [Elem]
---                                   atr    <- getAttr( Prelude.head chs) "id"
---                                   print "hello"
---                                   print atr
---                                   removeChild e parent  -- remove the old node
-                                   clearChildren e
-                                   return e')
-         return $ FormElm (nelem "div" `attr` ("id",id) `child` render') mx
-
-      Nothing -> return $ FormElm (nelem "div" `attr` ("id",id) `child` render) mx
 
 --norefresh w = View $ do
 --    id <- genNewId
---    me <- elemById  id
+--
 --    FormElm render mx <- runView w
+--
+--    me <- elemById id
 --    case me of
---     Nothing -> return $ FormElm (nelem "div" `attr` ("id",id) `child` render) mx
---     Just _ ->  return $ FormElm mempty mx
-
-norefresh w = View $ do
-    id <- genNewId
-
-    FormElm render mx <- runView w
-
-    me <- elemById id
-    case me of
-     Nothing -> do
-        midold <- elemById $ id <> "old"
-        case  midold of
-
-           Nothing -> return $ FormElm (nelem "div" `attr` ("id",id) `child` render) mx
-           Just elem  ->  do -- found the old node. it has been renamed by a previus "refresh"
-               let render'= JSBuilder $ \e -> do
-                                   parent <- parentNode elem
-                                   removeChild elem parent  -- remove the old node
-                                   setAttr elem  "id" id
-                                   addChild elem e
-                                   return e
-               return $ FormElm render' mx
-     Just _ -> -- the node is there, keep it
-           return $ FormElm mempty mx
-
+--     Nothing -> do
+--        midold <- elemById $ id <> "old"
+--        case  midold of
+--
+--           Nothing -> return $ FormElm (nelem "div" `attr` ("id",id) `child` render) mx
+--           Just elem  ->  do -- found the old node. it has been renamed by a previus "refresh"
+--               let render'= JSBuilder $ \e -> do
+--                                   parent <- parent elem
+--                                   removeChild elem parent  -- remove the old node
+--                                   setAttr elem  "id" id
+--                                   addChild elem e
+--                                   return e
+--               return $ FormElm render' mx
+--     Just _ -> -- the node is there, keep it
+--           let render'= JSBuilder $ e ->
+--           return $ FormElm mempty mx
+--
 
 
 

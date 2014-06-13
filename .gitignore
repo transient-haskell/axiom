@@ -10,6 +10,8 @@ MFlow.lkshf
 notes.txt
 notes.lhs
 dist
+*.hi
+*.o
 .cabal-sandbox
 cabal.sanbox.config
 

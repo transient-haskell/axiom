@@ -1,4 +1,4 @@
-name: hasjell-js-reactive-wigets
+name: haskell-js-reactive-wigets
 version: 0.1
 cabal-version: >=1.8
 build-type: Simple

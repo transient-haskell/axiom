@@ -73,15 +73,20 @@ child me ch= JSBuilder $ \e' -> do
 
 addEvent :: JSBuilder -> Event IO b -> IO () -> JSBuilder
 addEvent be event action= JSBuilder $ \e -> do
-        e' <- build be e
-        onEvent e event $ unsafeCoerce $ action >> focus e
+     e' <- build be e
+     has <- getAttr e' "hasevent"
+     case has of
+       "true" -> return e'
+       _ -> do
+        onEvent e' event $ unsafeCoerce $ action -- >> focus e
+        setAttr e' "hasevent" "true"
         return e'
 
 --elemsByTagName :: String -> IO [Elem]
 --elemsByTagName = ffi "(function(s){document.getElementsByTagName(s);})"
 
-parentNode :: Elem -> IO Elem
-parentNode e= ffi "(function(e){return e.parentNode;})"
+parent :: Elem -> IO Elem
+parent= ffi "(function(e){return e.parentNode;})"
 
 br= nelem "br"
 
