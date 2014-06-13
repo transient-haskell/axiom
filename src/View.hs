@@ -584,9 +584,9 @@ firstOf xs= Prelude.foldl (<|>) noWidget xs
 
 infixr 5 <<<
 
+(<<) tag content= tag `child` content
 
-
-
+infixr 7 <<
 
 
 -- | Append formatting code to a widget
@@ -628,6 +628,8 @@ widget <! attribs= View $ do
 --      case fs of
 --        [hfs] -> return $ FormElm  [hfs `attrs` attribs] mx
 --        _ -> error $ "operator <! : malformed widget: "++ concatMap (unpack. toByteString) fs
+
+
 
 
 
@@ -700,7 +702,6 @@ raiseEvent w event = View $ do
    FormElm render mx <- runView  w
    let render' = do
         addEvent (render :: JSBuilder) event  action
---        addAttr render "autofocus" ""
    return $ FormElm render' mx
 
 
@@ -710,112 +711,8 @@ runWidget action e = do
      let iteration= runWidget action e
      (FormElm render mx, s) <- runStateT (runView action) mFlowState0{process = iteration}
      let torefresh = refreshes s
---     mapM_ keepRefreshed torefresh
---     clearChildren e
      build render e
-     mapM renderRefresh torefresh
      return ()
 
 
 
-update w = View $ do
-    id <- genNewId
-    me <- elemById id
-    sw@(FormElm render mx) <- runView w
-    case me of
-      Nothing -> do
-        return $ FormElm (nelem "span" `attrs` [("id",id)] `child` render) mx
-      Just e -> clearChildren e >> return sw
-
-renderRefresh (id, render)= withElem id $ build render
-
-keepRefreshed (id, _)= do
-    me <- elemById id
-    case me of
-      Nothing -> return ()
-      Just e -> do
-           p <- parent e
-           removeChild e p
-
-keep w=  View   $ do
-    id <- genNewId
-    me <- elemById id
-    FormElm render mx <- runView w
-    case me of
-      Nothing -> do
-         modify $ \st -> st{ refreshes= (id,error "render"):refreshes st}
-         return $ FormElm (nelem "span" `attr` ("id",id) `child` render) mx
-      Just e -> do
-        let render'= JSBuilder $ \e' -> addChild e e' >> print "keep" >> return e'
-        return $ FormElm render' mx
-
-
-refresh w= View $ do
-   id <- genNewId
-   me <- elemById id
-   FormElm render mx <- runView w
-   case me of
-     Just e -> do
-        clearChildren e
-        modify $ \st -> st{ refreshes= (id,render):refreshes st}
-        return $ FormElm mempty mx
-     Nothing -> return $ FormElm (nelem "span" `attr` ("id",id) `child` render) mx
-
-
-
-
-norefresh w= View $ do
-   id <- genNewId
-   me <- elemById id
-   FormElm render mx <- runView w
-   case me of
-     Just e ->  return $ FormElm mempty mx
-     Nothing -> return $ FormElm (nelem "span" `attr` ("id",id) `child` render) mx
-
---refresh w= View $ do
---    id <- genNewId
---    me <- elemById id
---    FormElm render mx <- runView w
---    case me of
---      Just e -> do
---         setAttr e "id" $ id <> "old"
---         let render'= render
---                          <> JSBuilder (\e' -> do
---                                   par <- parent e
---                                   removeChild e par  -- remove the old node
---                                   return e')
---         return $ FormElm (nelem "div" `attr` ("id",id) `child` render') mx
---
---      Nothing -> return $ FormElm (nelem "div" `attr` ("id",id) `child` render) mx
-
-
---norefresh w = View $ do
---    id <- genNewId
---
---    FormElm render mx <- runView w
---
---    me <- elemById id
---    case me of
---     Nothing -> do
---        midold <- elemById $ id <> "old"
---        case  midold of
---
---           Nothing -> return $ FormElm (nelem "div" `attr` ("id",id) `child` render) mx
---           Just elem  ->  do -- found the old node. it has been renamed by a previus "refresh"
---               let render'= JSBuilder $ \e -> do
---                                   parent <- parent elem
---                                   removeChild elem parent  -- remove the old node
---                                   setAttr elem  "id" id
---                                   addChild elem e
---                                   return e
---               return $ FormElm render' mx
---     Just _ -> -- the node is there, keep it
---           let render'= JSBuilder $ e ->
---           return $ FormElm mempty mx
---
-
-
-
-
---updateWith expr :: set value with a expression
---  expr executed after the main expr.

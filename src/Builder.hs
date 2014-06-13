@@ -82,11 +82,23 @@ addEvent be event action= JSBuilder $ \e -> do
         setAttr e' "hasevent" "true"
         return e'
 
---elemsByTagName :: String -> IO [Elem]
---elemsByTagName = ffi "(function(s){document.getElementsByTagName(s);})"
+elemsByTagName :: String -> IO [Elem]
+elemsByTagName = ffi "(function(s){document.getElementsByTagName(s)})"
 
 parent :: Elem -> IO Elem
 parent= ffi "(function(e){return e.parentNode;})"
 
 br= nelem "br"
+
+
+div cont=  nelem "div" `child`  cont
+
+p cont = nelem "p" `child` cont
+
+b cont = nelem "b" `child` cont
+
+
+(!) pe atrib = \e ->  pe e `attr` atrib
+
+atr n v= (n,v)
 
