@@ -11,10 +11,10 @@ import Data.Monoid
 import Prelude hiding (div)
 
 
-main= withElem "idelem" $ runWidget $ sumv 2
 
 
-main2= withElem "idelem" . runWidget $
+
+main= withElem "idelem" . runWidget $
          table  <<<(tr ! atr "style" "vertical-align:top"
                      <<< ((td <<< sum3)
                      **>  (td <<< sumn 3)
