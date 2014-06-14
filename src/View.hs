@@ -72,13 +72,12 @@ import Builder
 --  use 'cachedByKey' if you want to avoid repeated IO executions.
 data NeedForm= HasForm | HasElems  | NoElems deriving Show
 data MFlowState= MFlowState { mfPrefix :: String,mfSequence :: Int
-                            ,  needForm :: NeedForm, process :: IO ()
-                            ,refreshes:: [(String, JSBuilder)]}
+                            ,  needForm :: NeedForm, process :: IO ()}
 type WState view m = StateT MFlowState m
 data FormElm view a = FormElm view (Maybe a)
 newtype View v m a = View { runView :: WState v m (FormElm v a)}
 
-mFlowState0= MFlowState "" 0 NoElems  (return ()) []
+mFlowState0= MFlowState "" 0 NoElems  (return ())
 --
 --
 --instance  FormInput v => MonadLoc (View v IO)  where
@@ -132,12 +131,17 @@ instance (Monoid view, Functor m, Monad m) => Alternative (View view m) where
                    return $ FormElm (form1 <> form2) (x <|> y) 
 
 
-strip st x= View $ put st >> runView x >>= \(FormElm _ mx) -> return $ FormElm mempty mx
+strip st x= View $ do
+    st' <- get
+    put st
+    FormElm _ mx <- runView x
+    put st'
+    return $ FormElm mempty mx
 
 instance  Monad (View JSBuilder IO) where
     x >>= f = View $ do
            id <- genNewId
-           modify $ \st -> st{process= runWidgetId ((strip st x) >>=f) id}
+           modify $ \st -> st{process= runWidgetId ((strip st x) >>=f ) id}
            FormElm form1 mk <- runView x
            let form1'= form1 <> (JSBuilder $ \e -> do
                 me <- elemById id
@@ -584,7 +588,9 @@ firstOf xs= Prelude.foldl (<|>) noWidget xs
 
 infixr 5 <<<
 
-(<<) tag content= tag `child` content
+-- | A parameter application with lower priority than ($) and direct function application
+(<<) :: (t1 -> t) -> t1 -> t
+(<<) tag content= tag  content
 
 infixr 7 <<
 
@@ -704,15 +710,35 @@ raiseEvent w event = View $ do
         addEvent (render :: JSBuilder) event  action
    return $ FormElm render' mx
 
+globalSeq= unsafePerformIO $ newIORef 0
 
-runWidgetId ac id=  withElem id $ \e -> clearChildren e >> runWidget ac e
+runWidgetId :: View JSBuilder IO b -> String  -> IO ()
+runWidgetId ac id =  do
+   seq <- readIORef globalSeq
+   withElem id $  \e -> do
+      clearChildren e
+--      let iteration= runWidget ac e
+      runWidget' ac e mFlowState0{mfSequence=seq}
 
+
+runWidget :: View JSBuilder IO b -> Elem  -> IO ()
 runWidget action e = do
      let iteration= runWidget action e
-     (FormElm render mx, s) <- runStateT (runView action) mFlowState0{process = iteration}
-     let torefresh = refreshes s
+     seq <- readIORef globalSeq
+     runWidget' action e mFlowState0{mfSequence= seq,process = iteration}
+
+runWidget' :: View JSBuilder IO b -> Elem -> MFlowState -> IO ()
+runWidget' action e st= do
+     (FormElm render mx, s) <- runStateT (runView action') st
      build render e
      return ()
+     where
+     action' =
+      action **> -- force the execution of do even if action fails
+        do
+          seq <- gets mfSequence
+          liftIO $ writeIORef globalSeq seq
+          return ()
 
 
 

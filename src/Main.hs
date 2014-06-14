@@ -10,16 +10,34 @@ import Control.Monad
 import Data.Monoid
 import Prelude hiding (div)
 
-main= do
-  withElem "idelem" $ runWidget $  sum3 **> sum2 **> sum1 **> return ()
 
-sum3 = p  "This widget sums three numbers and append the result" ++>
+main= withElem "idelem" $ runWidget $ sumv 2
+
+
+main2= withElem "idelem" . runWidget $
+         table  <<<(tr ! atr "style" "vertical-align:top"
+                     <<< ((td <<< sum3)
+                     **>  (td <<< sumn 3)
+                     **>  (td <<< sum1))  )
+--                **> tr ! atr "style" "vertical-align:top"
+--                     <<< td <<< sumv 3)
+--                     **> return ()
+
+table rows= nelem "table" `child` rows
+
+tr rows= nelem "tr" `child` rows
+
+td e= nelem "td" `child` e
+
+
+
+sum3 = p  "This widget sums two numbers and append the result. Using applicative and monadic expressions" ++>
   (p <<< do
-     r <- (+) <$> fromStr "first number  "
-             ++> inputInt Nothing `raiseEvent` OnKeyUp <++ br
-             <*> fromStr "second number "
-             ++> inputInt Nothing `raiseEvent` OnKeyUp <++ br
-     p <<< fromStr "result: " ++>  b (show r) ++> noWidget)
+     r <- (+) <$> fromStr "first number" ++> br
+              ++> inputInt Nothing `raiseEvent` OnKeyUp <++ br
+              <*> fromStr "second number " ++> br
+              ++> inputInt Nothing `raiseEvent` OnKeyUp <++ br
+     p <<< fromStr "result: " ++>  b (show r) ++> return())
 
 
 
@@ -33,10 +51,10 @@ sum1 = p  "This widget sums recursively n numbers. When enters 0, present the re
                b (show $ r+r') ++> br ++> return ()
                sumr (r+r')
 
---sum2 :: view JSBuilder IO ()
-sum2 =  p  "This widget sums three numbers and append the result" ++>
+
+sumn n =  p  "This widget sums three numbers and append the result using a fold" ++>
        (p <<< do
-         r <- foldl (<>)  (return 0) . take 3 $ repeat $ inputInt Nothing `raiseEvent` OnKeyUp <++  br
+         r <- foldl (<>)  (return 0) . take n $ repeat $ inputInt Nothing `raiseEvent` OnKeyUp <++  br
          br ++> fromStr "result: " ++>  b (show r) ++> return ())
 
 instance Monoid Int where
@@ -44,3 +62,9 @@ instance Monoid Int where
   mempty= 0
 
 
+sumv n = do
+    sumn n **> onemore <++  br
+    liftIO $ print $ "reexec"
+    sumv $ n +1
+  where
+  onemore= submitButton "+" `raiseEvent` OnClick
