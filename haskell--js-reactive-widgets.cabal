@@ -19,10 +19,10 @@ source-repository head
     location: http://github.com/agocorona/MFlow
 
 executable Main.hs
-    build-depends: base -any, transformers -any, monads-tf -any,
-                   bytestring -any, text -any, haste-compiler -any
+    build-depends: base, transformers, monads-tf, containers,
+                   bytestring , text, haste-compiler
     main-is: Main.hs
     buildable: True
     hs-source-dirs: src .
-    other-modules: View Builder
+    other-modules: View
 
