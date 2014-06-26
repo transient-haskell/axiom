@@ -83,7 +83,7 @@ sumcell = p  "This widget sum recursively n numbers, but remember the\
           \ previos entries when one entry is edited" ++> sumr 0 0
   where
   sumr i r=do
-    r' <- cell (show i) $  \v -> inputInt v `raiseEvent` OnKeyUp
+    r' <- mkcell (show i) (\v -> inputInt v `raiseEvent` OnKeyUp) Nothing
     b (show $ r+r') ++> br ++> return ()
     sumr (i +1) (r+r')
 
@@ -107,13 +107,3 @@ mkcell name widget initial =  do
   fromM Nothing = empty
   fromM (Just x) = return x
 
-> instance Show (x -> a)
-> instance Eq (x -> a)
-
-> instance (Num a,Eq a) => Num (x -> a) where
->     fromInteger = const . fromInteger
->     f + g = \x -> f x + g x
->     f * g = \x -> f x * g x
->     negate = (negate .)
->     abs = (abs .)
->     signum = (signum .)
