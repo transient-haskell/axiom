@@ -60,6 +60,7 @@ attr tag (n, v)=Perch $ \e -> do
         setAttr tag' n v
         return tag'
 
+nelem :: String -> Perch
 nelem s= Perch $ \e ->do
         e' <- newElem s
         addChild e' e
@@ -91,6 +92,7 @@ parent= ffi "(function(e){return e.parentNode;})"
 
 br= nelem "br"
 
+ctag tag cont= nelem tag `child` cont
 
 div cont=  nelem "div" `child`  cont
 
@@ -98,6 +100,7 @@ p cont = nelem "p" `child` cont
 
 b cont = nelem "b" `child` cont
 
+a cont = nelem "a" `child` cont
 
 (!) pe atrib = \e ->  pe e `attr` atrib
 

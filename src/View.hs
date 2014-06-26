@@ -205,23 +205,38 @@ instance (FormInput v,Monad (View v m), Monad m, Functor m, Monoid a) => Monoid 
 -- executed whithin the same page.
 wcallback
   :: View Perch IO a -> (a -> View Perch IO b) -> View Perch IO b
-wcallback  x f = View $ do
+wcallback  x' f' = View $ do
+   idhide <- genNewId
    id <- genNewId
+   let x = identified idhide x'
+   let f = hideBefore idhide f'
    contold <- setEventCont x f id
    FormElm form1 mk <- runView x
    resetEventCont contold
    let span= nelem "span" `attrs` [("id", id)]
    case mk of
      Just k  -> do
-        withElem id $ clearChildren
         FormElm form2 mk <- runView $ f k
-        return $ FormElm ((span `child`  form2)) mk
+        return $ FormElm (form1 <> (span `child`  form2)) mk
      Nothing -> 
         return $ FormElm  (form1 <> span)  Nothing
+                        
+   where
+   identified id x= View $ do
+     let span= nelem "span" `attr` ("id", id)
+     FormElm f mx <- runView x
+     return $ FormElm (span `child` f) mx
+    
+   hideBefore id f = \x -> View $ do
+     FormElm f mx <- runView $ f x
+     return $ FormElm (f <> hide id) mx
+     where
+     hide id= Perch $ \e' -> do
+           withElem id $ \e -> do
+             par <- parent e
+             removeChild e par
+           return e'
 
-clear id= Perch $ \ parent -> do
-  withElem id $ clearChildren
-  return parent
 
 instance  (FormInput view,Monad m,Monad (View view m)) => MonadState (View view m) where
   type StateType (View view m)= MFlowState
@@ -374,6 +389,7 @@ getParam1 :: (MonadIO m, MonadState  m, Typeable a, Read a, FormInput v)
           => String ->  m (ParamResult v a)
 getParam1 par = do
    me <- elemById par
+   liftIO . print $ "elemByid " ++ par ++ " result= "++ show (isJust me)
    case me of
      Nothing -> return  NoParam
      Just e ->  do
@@ -584,6 +600,9 @@ submitButton label= getParam Nothing "submit" $ Just label
 inputSubmit :: (StateType (View view m) ~ MFlowState,FormInput view, MonadIO m) => String -> View view m String
 inputSubmit= submitButton
 
+wlink x v= (nelem "a" `attrs` [("href", show x),("onclick","return false;")]  `child` v)
+           ++> return x
+
 -- | Concat a list of widgets of the same type, return a the first validated result
 firstOf :: (FormInput view, Monad m, Functor m)=> [View view m a]  -> View view m a
 firstOf xs= Prelude.foldl (<|>) noWidget xs
@@ -792,7 +811,7 @@ runWidgetId ac id =  do
    st <- takeMVar globalState
    withElem id $  \e -> do
       clearChildren e
---      let iteration= runWidget ac e
+
       runWidgetSt ac e st
 
 

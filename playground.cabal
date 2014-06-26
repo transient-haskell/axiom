@@ -1,0 +1,28 @@
+name: playground
+version: 0.1
+cabal-version: >=1.8
+build-type: Simple
+license: BSD3
+license-file: LICENSE
+maintainer: agocorona@gmail.com
+stability: experimental
+bug-reports: https://github.com/agocorona/MFlow/issues
+synopsis: reactive javascript widgets that control his own presentation
+description:
+
+category: Web, Application Server
+author: Alberto Gómez Corona
+data-dir: ""
+
+source-repository head
+    type: git
+    location: http://github.com/agocorona/MFlow
+
+executable Main.hs
+    build-depends: base, transformers, monads-tf, containers,
+                   bytestring , text, haste-compiler
+    main-is: Main.hs
+    buildable: True
+    hs-source-dirs: src .
+    other-modules: View
+

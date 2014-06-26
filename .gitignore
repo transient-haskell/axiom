@@ -12,6 +12,7 @@ notes.lhs
 dist
 *.hi
 *.o
+*.jsmod
 .cabal-sandbox
 cabal.sanbox.config
 
