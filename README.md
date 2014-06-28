@@ -37,7 +37,7 @@ http://mflowdemo.herokuapp.com/noscript/wiki/browserwidgets
 This is the same example running, inserted as a script:
 
 <div id="idelem"></div>
-<script  src="http://mflowdemo.herokuapp.com/browserwidget.js" type "text/javascript"></script>
+<script  src="http://mflowdemo.herokuapp.com/browserwidget.js" type="text/javascript"></script>
 
 
 The source of the last version of this example is the Main.hs:
