@@ -80,17 +80,20 @@ type SData= ()
 --instance MonadState IO where
 --  type StateType IO=  MFlowState
 
-data EventF= forall b c.EventF (IO (Maybe b)) (b -> IO (Maybe c))
+data EventF= forall b c.EventF (IO (Maybe b)) (b -> IO (Maybe c)) --
 
 data MFlowState= MFlowState { mfPrefix :: String,mfSequence :: Int
                             , needForm :: NeedForm, process :: EventF
                             , mfData  :: M.Map TypeRep SData}
 
+type Widget a= View Perch IO a
+
 type WState view m = StateT MFlowState m
 data FormElm view a = FormElm view (Maybe a)
 newtype View v m a = View { runView :: WState v m (FormElm v a)}
 
-mFlowState0= MFlowState "" 0 NoElems  (EventF (return Nothing) (const $ return Nothing)) M.empty
+mFlowState0= MFlowState "" 0 NoElems  (EventF (return Nothing)
+                        (const $ return Nothing) ) M.empty
 --
 --
 --instance  FormInput v => MonadLoc (View v IO)  where
@@ -151,19 +154,19 @@ strip st x= View $ do
     put st'
     return $ FormElm mempty mx
 
-setEventCont :: View Perch IO a -> (a -> View Perch IO b) -> String -> StateT MFlowState IO EventF
-setEventCont x f id= do
+setEventCont :: Widget a -> (a ->Widget b)  -> String -> StateT MFlowState IO EventF
+setEventCont x f  id= do
    st <- get
    let conf = process st
    case conf of
-     EventF x' f' -> do
+     EventF x' f'  -> do
        let addto f f'= \x -> do
              mr <- runWidgetId (f x) id
              case mr of
                Nothing -> return Nothing
                Just x' ->  f' x'
            idx= runWidgetId ( strip st  x) id
-       put st{process= EventF idx (f `addto` unsafeCoerce f')}
+       put st{process= EventF idx (f `addto` unsafeCoerce f') }
    return conf
 
 resetEventCont cont= modify $ \s -> s {process= cont}
@@ -171,7 +174,7 @@ resetEventCont cont= modify $ \s -> s {process= cont}
 instance Monad (View Perch IO) where
     x >>= f = View $ do
            id <- genNewId
-           contold <- setEventCont x f id
+           contold <- setEventCont x f  id
            FormElm form1 mk <- runView x
            resetEventCont contold
            let span= nelem "span" `attrs` [("id", id)]
@@ -199,18 +202,14 @@ instance (FormInput v,Monad (View v m), Monad m, Functor m, Monoid a) => Monoid 
 -- the simultaneous execution of different behaviours in different widgets in the
 -- same page. The inspiration is the callback primitive in the Seaside Web Framework
 -- that allows similar functionality (See <http://www.seaside.st>)
---
--- This is the visible difference with 'waction' callbacks, which execute a
--- a flow in the FlowM monad that takes complete control of the navigation, while wactions are
--- executed whithin the same page.
 wcallback
-  :: View Perch IO a -> (a -> View Perch IO b) -> View Perch IO b
+  :: Widget a -> (a ->Widget b) ->Widget b
 wcallback  x' f' = View $ do
    idhide <- genNewId
    id <- genNewId
    let x = identified idhide x'
-   let f = hideBefore idhide f'
-   contold <- setEventCont x f id
+   let f = delBefore idhide f'
+   contold <- setEventCont x f  id
    FormElm form1 mk <- runView x
    resetEventCont contold
    let span= nelem "span" `attrs` [("id", id)]
@@ -222,20 +221,21 @@ wcallback  x' f' = View $ do
         return $ FormElm  (form1 <> span)  Nothing
                         
    where
-   identified id x= View $ do
-     let span= nelem "span" `attr` ("id", id)
-     FormElm f mx <- runView x
-     return $ FormElm (span `child` f) mx
-    
-   hideBefore id f = \x -> View $ do
+
+   delBefore id f = \x -> View $ do
      FormElm f mx <- runView $ f x
-     return $ FormElm (f <> hide id) mx
+     return $ FormElm (f <> del id) mx
      where
-     hide id= Perch $ \e' -> do
+     del id= Perch $ \e' -> do
            withElem id $ \e -> do
              par <- parent e
              removeChild e par
            return e'
+
+identified id x= View $ do
+     let span= nelem "span" `attr` ("id", id)
+     FormElm f mx <- runView x
+     return $ FormElm (span `child` f) mx
 
 
 instance  (FormInput view,Monad m,Monad (View view m)) => MonadState (View view m) where
@@ -389,7 +389,6 @@ getParam1 :: (MonadIO m, MonadState  m, Typeable a, Read a, FormInput v)
           => String ->  m (ParamResult v a)
 getParam1 par = do
    me <- elemById par
-   liftIO . print $ "elemByid " ++ par ++ " result= "++ show (isJust me)
    case me of
      Nothing -> return  NoParam
      Just e ->  do
@@ -542,7 +541,9 @@ getParam
       Show a,
       Read a) =>
      Maybe String -> String -> Maybe a -> View view m  a
-getParam look type1 mvalue = View $ do
+getParam  look type1 mvalue= View $ getParamS look type1 mvalue
+
+getParamS look type1 mvalue= do
     tolook <- case look of
        Nothing  -> genNewId
        Just n -> return n
@@ -764,7 +765,7 @@ getSessionData =  resp where
 -- | getSessionData specialized for the View monad. if Nothing, the monadic computation
 -- does not continue. getSData is a widget that does not validate when there is no data
 --  of that type in the session.
-getSData :: Typeable a => View Perch IO  a
+getSData :: Typeable a =>Widget  a
 getSData= View $ do
     r <- getSessionData
     return $ FormElm mempty r
@@ -785,16 +786,21 @@ delSData= delSessionData
 
 ---------------------------
 
---raiseEvent :: View Perch IO a -> Event IO b -> View Perch IO a
+callbacks= unsafePerformIO $ newMVar $ return Nothing
+
+raiseEvent :: Widget a -> Event IO b ->Widget a
 raiseEvent w event = View $ do
  r <- gets process
- case r of
-  EventF x f -> do
-   FormElm render mx <- runView  w
-   st <- get
 
+ liftIO $ print "raiseEvent"
+ case r of
+  EventF x f  -> do
+   FormElm render mx <- runView  w
+   let bcs = do
+       bc <- liftIO $ readMVar callbacks
+       bc
    let render' = addEvent (render :: Perch) event
-                ( (x `addto` f )  >> return ())
+                ( (x `addto` f >>  bcs )  >> return ())
    return $ FormElm render' mx
    where
    addto f f'=  do
@@ -806,31 +812,26 @@ raiseEvent w event = View $ do
 globalState= unsafePerformIO $ newMVar mFlowState0
 
 
-runWidgetId :: View Perch IO b -> String  -> IO (Maybe b)
+runWidgetId :: Widget b -> String  -> IO (Maybe b)
 runWidgetId ac id =  do
-   st <- takeMVar globalState
+
    withElem id $  \e -> do
       clearChildren e
+      runWidget ac e
 
-      runWidgetSt ac e st
 
 
---runWidgetSt :: View Perch IO b -> Elem  -> IO ()
+--runWidgetSt ::Widget b -> Elem -> MFlowState -> IO ()
 runWidget action e = do
-     let iteration= runWidget action e
      st <- takeMVar globalState
-     runWidgetSt action e st -- {process = iteration}
-
---runWidgetSt :: View Perch IO b -> Elem -> MFlowState -> IO ()
-runWidgetSt action e st= do
---     liftIO $ print "event"
      (FormElm render mx, s) <- runStateT (runView action') st
      build render e
      return mx
      where
-     action' = action <** -- force the execution of the next even if action fails
+     action' = action <** -- force the execution of the code below, even if action fails
         (View $ do
           st <- get
           liftIO $ putMVar globalState st
           return $ FormElm mempty Nothing)
+
 

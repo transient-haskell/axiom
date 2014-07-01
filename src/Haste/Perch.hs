@@ -23,6 +23,7 @@ import Haste.Foreign(ffi)
 import Data.Maybe
 import Data.Monoid
 import Unsafe.Coerce
+import Control.Monad.IO.Class
 
 newtype PerchM a= Perch{build :: Elem -> IO Elem} deriving Typeable
 
@@ -90,6 +91,14 @@ elemsByTagName = ffi "(function(s){document.getElementsByTagName(s)})"
 parent :: Elem -> IO Elem
 parent= ffi "(function(e){return e.parentNode;})"
 
+evalFormula :: String  -> IO Double
+evalFormula= ffi "(function(exp){ return eval(exp);})"
+
+
+
+instance MonadIO PerchM  where
+   liftIO mx= Perch $ \e -> mx >> return e
+
 br= nelem "br"
 
 ctag tag cont= nelem tag `child` cont
@@ -102,7 +111,10 @@ b cont = nelem "b" `child` cont
 
 a cont = nelem "a" `child` cont
 
+h1 cont= nelem "h1" `child` cont
+
 (!) pe atrib = \e ->  pe e `attr` atrib
 
 atr n v= (n,v)
 
+style= atr "style"
