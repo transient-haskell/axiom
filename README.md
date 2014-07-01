@@ -3,10 +3,10 @@ Playground
 Create applications in the browser as fast as easy as console applications and have reactive, window-oriented
 and spreadsheet-like behaviours for free.
 
-So you translate your inputs and outputs from console calls to playground widgets and with no more modifucations
+So you translate your inputs and outputs from console calls to playground widgets and with no more modifications
 you have reactive and spreadsheet behaviours.
 
-Reactive haskell widgets running in the browser. The MFlow widgets running in the browser with the Haste compiler
+Hplayground is the MFlow widgets running in the browser with the Haste compiler
 
 This program creates two input boxes and present the sum below them:
 
@@ -80,7 +80,8 @@ compile
 
     >cd src
     >hastec Main.hs
-    
+
+hastec uses ghc internally so you can expect ordinary ghc error messages in your development.    
 browse the Main.html file. In windows simply execute it in the command line:
 
     >Main.html

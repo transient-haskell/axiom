@@ -20,23 +20,29 @@ import Data.Default
 
 main= do
    withElem "idelem" . runWidget $
-
         h1 ! style "text-align:center" << "hplayground" ++>
         (table  <<<(tr ! atr "style" "vertical-align:top"
                      <<< ((td <<< sumTwo)
-                     **>  (td <<< sumfold 3)
-                     **>  (td <<< sumRecursive))
-                *> tr ! atr "style" "vertical-align:top"
+                     <|>  (td <<< sumfold 3)
+                     <|>  (td <<< sumRecursive))
+                <|> tr ! atr "style" "vertical-align:top"
                      <<<  (td <<< counter 3
-                     **>   td <<< sumCell
-                     **>   td <<< showpascal 4)
-                *> tr ! style "vertical-align:top"
+                     <|>   td <<< sumCell
+                     <|>   td <<< showpascal 4)
+                <|> tr ! style "vertical-align:top"
                      <<<  (td <<< drawcanvas
-                     **>   td <<< gallery )
-                   )
-                     **> return ())
+                     <|>   td <<< gallery )
+                   ))
 
         <++  b << "bottom of the page"
+--
+-- dont't be affraid of the operators:
+-- <|> is the Alternantive combinator to combine Widget() entries
+-- and the <<< combinator simply encloses a widget within a HTML tag.
+--
+--
+
+-- This should be in Haste.Perch
 
 table rows= nelem "table" `child` rows
 
@@ -68,7 +74,7 @@ sumRecursive = p  "This widget sum recursively n numbers. When enters 0, present
         b (show $ r+r') ++> br ++> return ()
         sumr (r+r')
 
-
+sumfold :: Int -> Widget ()
 sumfold n =  p  ("This widget sum "++ show n ++" numbers and append the result using a fold") ++>
        (p <<< do
          r <- foldl (<>)  (return 0) . take n $ repeat $ inputInt Nothing `raiseEvent` OnKeyUp <++  br
@@ -79,57 +85,57 @@ instance Monoid Int where
   mempty= 0
 
 
-counter n = p " A counter " ++> br ++> counter1 n
- where
- counter1 n=
-   (b (show n) ++> onemore) -- (sumfold n **> onemore <++  br)
-   `wcallback` (const $ counter1 $ n +1)
 
- onemore=  submitButton "+" `raiseEvent` OnKeyUp
+
+
+counter :: Int -> Widget ()
+counter n = p " A counter. wcallback erases the previous rendering of the widget an regenerates it again "
+            ++> br ++> counter1 n
+ where
+ counter1 n= (b (show n) ++> onemore)  `wcallback` (const $ counter1 $ n +1)
+
+ onemore=  submitButton "+" `raiseEvent` OnClick
+
+
+
+
 
 
 sumCell :: Widget ()
 
 sumCell = p  "This widget sum recursively n numbers, but remember the\
           \ previos entries when one entry is edited" ++> sumr 0 0
-  where
-  sumr i r=do
-    r' <- mkcell (show i) (\v -> inputInt v `raiseEvent` OnKeyUp) Nothing
-    b (show $ r+r') ++> br ++> return ()
-    sumr (i +1) (r+r')
 
-mkcell name widget initial =  do
-    stored <- Just <$> getNumber name <|> return initial
-    r' <- widget stored {- inputInt stored `raiseEvent` OnKeyUp -} <|> fromM stored
-    addNumber name r'
-    return r'
-  where
-  addNumber i x= do
-       xs <- getSData <|> return  V.empty
-       setSData $ V.insert i x xs
+ where
+ sumr i r=do
+     r' <- cell i
+     b (show $ r+r') ++> br ++> return ()
+     sumr (i +1) (r+r')
 
---  getNumber :: Int -> View Perch IO Int
-  getNumber i= do
-       xs <- getSData
-       case  V.lookup i xs of
-         Nothing -> empty
-         Just x  -> return x
+ cell i=  do
+     stored <- Just <$> getNumber i <|> return Nothing
+     r' <- inputInt stored `raiseEvent` OnKeyUp <|> fromM stored
+     addNumber i r'
+     return r'
+   where
+   addNumber i x= do
+        xs <- getSData <|> return  V.empty
+        setSData $ V.insert i x xs
 
-  fromM Nothing = empty
-  fromM (Just x) = return x
+   getNumber :: Int -> Widget Int
+   getNumber i= do
+        xs <- getSData
+        case  V.lookup i xs of
+          Nothing -> empty
+          Just x  -> return x
 
-
-
-
-boxChar mval= inputString mval `raiseEvent` OnKeyUp
+   fromM Nothing = empty
+   fromM (Just x) = return x
 
 
-----palindrome= wupdated (inputInt Nothing `raiseEvent` OnKeyUp >>= wraw . b) (empty)
---
---palindrome=
---      (boxCell "straight" $ fmap reverse $ cell "reverse"  :: Widget String) <++ br
---    <|>
---      (boxCell "reverse"  $ fmap reverse $ cell "straight" :: Widget String)
+
+
+
 
 
 -- pascal triangle http://www.haskell.org/haskellwiki/Blow_your_mind
@@ -140,13 +146,26 @@ showpascal n= p << ("Show " ++ show n ++ " rows of the Pascal triangle ")
    ++> mconcat[p ! atr "style" "text-align:center" $ row | row <- take n pascal]
    ++> empty   -- the applicative empty === noWidget
 
+
+
+
+
+
+
 drawcanvas :: Widget ()
-drawcanvas= center <<< do
-  let initial= "Math.pow(x,2);"
-  expr <- inputString (Just initial) `raiseEvent` OnKeyUp <++ br <|> return initial
-  wraw $ canvas ! Main.id "canvas"  $ noHtml
-  wraw $ draw expr
+drawcanvas=
+ p << "This example draw a function of x between 10 and -10. You can define the function\
+      \ using javascript expressions"  ++>
+
+ (center <<< do
+      let initial= "Math.pow(x,2)+x+10;"
+      expr <- inputString (Just initial) `raiseEvent` OnKeyUp <++ br <|> return initial
+      wraw $ canvas ! Haste.Perch.id "canvas"  $ noHtml
+      wraw $ draw expr)
+
+
   where
+
   draw expr= liftIO $ do
     Just can <- getCanvasById "canvas"
     let range= [-10..10]
@@ -162,21 +181,17 @@ drawcanvas= center <<< do
     | c==c' =  v++ subst c v cs
     | otherwise= c':subst c v cs
 
-wtimeout t w= View $ do
-    id <- genNewId
-    let f= setTimeout t $ do
-        r <- runWidgetId w id
-        case r of
-          Nothing -> f
-          Just _  -> return ()
 
-    liftIO  f
-    runView $ identified id w
+
+
+
 
 
 newtype GalleryIndex= G Int deriving Typeable
 
-gallery = wtimeout 20000 $ do
+gallery = p "this example show a image gallery. It advances each 20 seconds and by\
+               \ pressing the button" ++>
+ (wtimeout 20000 $ do
   G i <- getSData <|> return (G 0)
   let i' = if i == length gall-1  then 0 else  i+1
   setSData $ G i'
@@ -184,7 +199,7 @@ gallery = wtimeout 20000 $ do
       img ! src (gall !! i) ! width "100%" ! height "100%" $ noHtml   -- raw Perch code
       br
   submitButton ">" `raiseEvent` OnClick
- `wcallback` \_ -> gallery
+ `wcallback` \_ -> gallery)
 
   where
   gall=["http://almaer.com/blog/uploads/interview-haskell.png"
@@ -195,12 +210,4 @@ gallery = wtimeout 20000 $ do
        ,"https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRAgKkpDyzk8kdIqk5ECsZ14XgbpBzyWFvrCrHombkSBAUn6jFo"
        ]
 
-noHtml= mempty :: Perch
-canvas cont = nelem "canvas" `child` cont
-center cont= nelem "center" `child` cont
-img cont = nelem "img" `child` cont
-id = atr "id"
-width= atr "width"
-height= atr "height"
-href= atr "href"
-src= atr "src"
+

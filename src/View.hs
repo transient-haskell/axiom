@@ -791,8 +791,6 @@ callbacks= unsafePerformIO $ newMVar $ return Nothing
 raiseEvent :: Widget a -> Event IO b ->Widget a
 raiseEvent w event = View $ do
  r <- gets process
-
- liftIO $ print "raiseEvent"
  case r of
   EventF x f  -> do
    FormElm render mx <- runView  w
@@ -808,6 +806,21 @@ raiseEvent w event = View $ do
      case mr of
        Nothing -> return Nothing
        Just x' ->  f' x'
+
+
+-- | executes a widget each t milliseconds until it validates and return ()
+wtimeout t w= View $ do
+    id <- genNewId
+    let f= setTimeout t $ do
+        r <- runWidgetId w id
+        case r of
+          Nothing -> f
+          Just ()  -> return ()
+
+    liftIO  f
+    runView $ identified id w
+
+
 
 globalState= unsafePerformIO $ newMVar mFlowState0
 

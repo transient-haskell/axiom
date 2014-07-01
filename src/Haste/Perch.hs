@@ -118,3 +118,21 @@ h1 cont= nelem "h1" `child` cont
 atr n v= (n,v)
 
 style= atr "style"
+
+noHtml= mempty :: Perch
+
+canvas cont = nelem "canvas" `child` cont
+
+center cont= nelem "center" `child` cont
+
+img cont = nelem "img" `child` cont
+
+id = atr "id"
+
+width= atr "width"
+
+height= atr "height"
+
+href= atr "href"
+
+src= atr "src"
