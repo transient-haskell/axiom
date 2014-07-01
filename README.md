@@ -58,8 +58,38 @@ the remaining widgets continue unchanged and unevaluated.
 Status
 ======
 
-Propagation upstream can be achieved with the witerate modifier, used also in the server side
-(not tested). A higuer level of spreadsheet like behaviour can be simulated with the cell
-abstraction (not yet finished) but the current example show behaviours typical of spreadsheets
+Propagation of events upstream has proved to be hard. A higuer level of spreadsheet like behaviour can be simulated with the cell abstraction (not yet finished) but the current example show behaviours typical of spreadsheets
 and window aplications as well as console applications.
+
+At this moment only text boxes and buttons work.  I have to add the dropdowns option buttons and wlinks.  so that full window like applications can be created. I just follow the path of higher resistance and leave the easy things for later.
+
+How to run
+----------
+
+install the ghc compiler
+
+install Haste:
+
+    >cabal install haste-compiler
+
+clone hplayground
+  
+    >git clone http://github.com/agocorona/hplayground
+    
+compile
+
+    >cd src
+    >hastec Main.hs
+    
+browse the Main.html file. In windows simply execute it in the command line:
+
+    >Main.html
+    
+you can also see it executing at 
+
+     http://mflowdemo.herokuapp.com/noscript/wiki/browserwidgets
+
+Main.html and Main.js is included in the repo so you can execute it in your PC
+
+Execute it in the same directory where Main.js is, since it references it assuming that it is in the current folder
 
