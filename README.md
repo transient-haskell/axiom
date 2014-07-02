@@ -22,11 +22,11 @@ This program creates two input boxes and present the sum below them:
           withElem "idelem" $ runWidget action
           return ()
 
-        action :: View JSBuilder IO ()
+        action :: Widget ()
         action = do
-             r  <- norefresh ((+) <$> inputInt Nothing `raiseEvent` OnKeyPress <++ br
-                                 <*> inputInt Nothing `raiseEvent` OnKeyPress <++ br)
-             refresh $ (nelem "b" `child`  (show r)) ++> noWidget
+             r  <- (+) <$> inputInt Nothing `raiseEvent` OnKeyPress <++ br
+                       <*> inputInt Nothing `raiseEvent` OnKeyPress <++ br
+             p  (show r) ++> noWidget
 
 This program creates his own rendering, that can be changed dinamically.
 
