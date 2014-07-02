@@ -136,3 +136,9 @@ height= atr "height"
 href= atr "href"
 
 src= atr "src"
+
+table rows= nelem "table" `child` rows
+
+tr rows= nelem "tr" `child` rows
+
+td e= nelem "td" `child` e

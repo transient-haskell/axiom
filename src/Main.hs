@@ -20,7 +20,7 @@ import Data.Default
 
 main= do
    withElem "idelem" . runWidget $
-        h1 ! style "text-align:center" << "hplayground" ++>
+        h1 ! style "text-align:center" << "hplayground examples" ++>
         (table  <<<(tr ! atr "style" "vertical-align:top"
                      <<< ((td <<< sumTwo)
                      <|>  (td <<< sumfold 3)
@@ -36,19 +36,11 @@ main= do
 
         <++  b << "bottom of the page"
 --
--- dont't be affraid of the operators:
--- <|> is the Alternantive combinator to combine Widget() entries
+-- Dont't be scared by the operators:
+-- <|> is the Alternantive combinator, to combine Widget() entries
 -- and the <<< combinator simply encloses a widget within a HTML tag.
 --
 --
-
--- This should be in Haste.Perch
-
-table rows= nelem "table" `child` rows
-
-tr rows= nelem "tr" `child` rows
-
-td e= nelem "td" `child` e
 
 
 sumTwo :: Widget ()
@@ -57,7 +49,7 @@ sumTwo = p  "This widget sum two numbers and append the result. Using applicativ
      r <- (+) <$> fromStr "first number"  ++> br
                    ++> inputInt Nothing `raiseEvent` OnKeyUp  <++ br
               <*> fromStr "second number " ++> br
-                   ++> inputInt Nothing `raiseEvent` OnKeyUp `validate` less3 <++ br
+                   ++> inputInt Nothing `raiseEvent` OnKeyUp  <++ br
      p <<< fromStr "result: " ++>  b (show r) ++> return())
 
   where
