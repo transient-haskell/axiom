@@ -74,18 +74,19 @@ child me ch= Perch $ \e' -> do
         r <- build t e
         return e
 
-addEvent :: Perch -> Event IO b -> IO () -> Perch
+addEvent :: Perch -> Event IO a -> a -> Perch
 addEvent be event action= Perch $ \e -> do
      e' <- build be e
-     has <- getAttr e' "hasevent"
+     let atr= evtName event
+     has <- getAttr e'  atr -- "hasevent"
      case has of
        "true" -> return e'
        _ -> do
-        onEvent e' event $ unsafeCoerce $ action -- >> focus e
-        setAttr e' "hasevent" "true"
+        onEvent e' event  action -- >> focus e
+        setAttr e' atr "true"
         return e'
 
-elemsByTagName :: String -> IO [Elem]
+elemsByTagName :: ElemID -> IO [Elem]
 elemsByTagName = ffi "(function(s){document.getElementsByTagName(s)})"
 
 parent :: Elem -> IO Elem
@@ -93,8 +94,6 @@ parent= ffi "(function(e){return e.parentNode;})"
 
 evalFormula :: String  -> IO Double
 evalFormula= ffi "(function(exp){ return eval(exp);})"
-
-
 
 instance MonadIO PerchM  where
    liftIO mx= Perch $ \e -> mx >> return e

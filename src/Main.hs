@@ -31,15 +31,17 @@ main= do
                      <|>   td <<< showpascal 4)
                 <|> tr ! style "vertical-align:top"
                      <<<  (td <<< drawcanvas
-                     <|>   td <<< gallery )
+                     <|>   td <<< gallery
+                     <|>   td <<< mouse )
                    ))
 
         <++  b << "bottom of the page"
---
+
 -- Dont't be scared by the operators:
 -- <|> is the Alternantive combinator, to combine Widget() entries
 -- and the <<< combinator simply encloses a widget within a HTML tag.
---
+-- ++> prepend HTML to a widget
+-- <++ postpend it
 --
 
 
@@ -181,6 +183,7 @@ drawcanvas=
 
 newtype GalleryIndex= G Int deriving Typeable
 
+gallery :: Widget ()
 gallery = p "this example show a image gallery. It advances each 20 seconds and by\
                \ pressing the button" ++>
  (wtimeout 20000 $ do
@@ -202,4 +205,18 @@ gallery = p "this example show a image gallery. It advances each 20 seconds and 
        ,"https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRAgKkpDyzk8kdIqk5ECsZ14XgbpBzyWFvrCrHombkSBAUn6jFo"
        ]
 
+
+mouse :: Widget ()
+mouse= do
+    wraw (div  ! style "height:100px;background-color:green" $ "mouse events here")
+                            `raiseEvent` OnMouseOut
+                            `raiseEvent` OnMouseOver
+                            `raiseEvent` OnMouseDown
+                            `raiseEvent` OnMouseMove
+                            `raiseEvent` OnMouseUp
+                            `raiseEvent` OnClick
+                            `raiseEvent` OnDblClick
+                            `raiseEvent` OnKeyPress
+    evdata  <- getEventData
+    wraw $ p << ( (evName evdata) ++" "++ show (evData evdata))
 

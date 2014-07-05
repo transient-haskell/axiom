@@ -13,7 +13,8 @@
 -----------------------------------------------------------------------------
 
 {-# LANGUAGE  MultiParamTypeClasses, FlexibleContexts, FlexibleInstances
-    ,  TypeFamilies, DeriveDataTypeable, UndecidableInstances, ExistentialQuantification
+    , TypeFamilies, DeriveDataTypeable, UndecidableInstances, ExistentialQuantification
+    , GADTs
     #-}
 module View  where
 import Control.Applicative
@@ -21,7 +22,7 @@ import Data.Monoid
 import Control.Monad.State
 import Control.Monad.IO.Class
 import Data.Typeable
-import Data.ByteString.Lazy.Char8  as B hiding (length, foldr, take)
+--import Data.ByteString.Lazy.Char8  as B hiding (length, foldr, take)
 import Unsafe.Coerce
 import Data.Maybe
 import Haste.DOM
@@ -74,8 +75,8 @@ import Haste.Perch
 data NeedForm= HasForm | HasElems  | NoElems deriving Show
 type SData= ()
 
---instance MonadState (View Perch IO) where
---  type StateType (View Perch IO)=  MFlowState
+--instance MonadState (  Widget) where
+--  type StateType (  Widget)=  MFlowState
 --
 --instance MonadState IO where
 --  type StateType IO=  MFlowState
@@ -86,7 +87,7 @@ data MFlowState= MFlowState { mfPrefix :: String,mfSequence :: Int
                             , needForm :: NeedForm, process :: EventF
                             , mfData  :: M.Map TypeRep SData}
 
-type Widget a= View Perch IO a
+type Widget a=  View Perch IO a
 
 type WState view m = StateT MFlowState m
 data FormElm view a = FormElm view (Maybe a)
@@ -94,35 +95,6 @@ newtype View v m a = View { runView :: WState v m (FormElm v a)}
 
 mFlowState0= MFlowState "" 0 NoElems  (EventF (return Nothing)
                         (const $ return Nothing) ) M.empty
---
---
---instance  FormInput v => MonadLoc (View v IO)  where
---    withLoc loc f = View $ do
---       withLoc loc $ do
---            s <- get
---            (r,s') <- lift $ do
---                       rs@(r,s') <- runStateT (runView f) s
---                                             `CE.catch` (handler1  loc s)
---                       case mfTrace s' of
---                            []     ->  return rs
---                            trace  ->  return(r, s'{mfTrace=  loc:trace})
---            put s'
---            return r
---
---       where
---       handler1 loc s (e :: SomeException)= do
---        case CE.fromException e :: Maybe WFErrors of
---           Just e  -> CE.throw e                -- !> ("TROWN=" ++ show e)
---           Nothing ->
---             case CE.fromException e :: Maybe AsyncException of
---                Just e -> CE.throw e            -- !> ("TROWN ASYNC=" ++ show e)
---                Nothing ->
---                  return (FormElm mempty Nothing, s{mfTrace= [show e]}) -- !> loc
---
-
-
-
-
 
 
 instance Functor (FormElm view ) where
@@ -154,7 +126,7 @@ strip st x= View $ do
     put st'
     return $ FormElm mempty mx
 
-setEventCont :: Widget a -> (a ->Widget b)  -> String -> StateT MFlowState IO EventF
+setEventCont :: Widget a -> (a -> Widget b)  -> String -> StateT MFlowState IO EventF
 setEventCont x f  id= do
    st <- get
    let conf = process st
@@ -189,7 +161,6 @@ instance Monad (View Perch IO) where
     return = View .  return . FormElm  mempty . Just
 --    fail msg= View . return $ FormElm [inRed msg] Nothing
 
-
   
 
 instance (FormInput v,Monad (View v m), Monad m, Functor m, Monoid a) => Monoid (View v m a) where
@@ -203,7 +174,7 @@ instance (FormInput v,Monad (View v m), Monad m, Functor m, Monoid a) => Monoid 
 -- same page. The inspiration is the callback primitive in the Seaside Web Framework
 -- that allows similar functionality (See <http://www.seaside.st>)
 wcallback
-  :: Widget a -> (a ->Widget b) ->Widget b
+  ::  Widget a -> (a ->Widget b) ->Widget b
 wcallback  x' f' = View $ do
    idhide <- genNewId
    id <- genNewId
@@ -352,7 +323,7 @@ type OnClick= Maybe String
 -- See "MFlow.Forms.Blaze.Html for the instance for blaze-html" "MFlow.Forms.XHtml" for the instance
 -- for @Text.XHtml@ and MFlow.Forms.HSP for the instance for Haskell Server Pages.
 class (Monoid view,Typeable view)   => FormInput view where
-    toByteString :: view -> B.ByteString
+
 
     fromStr :: String -> view
     fromStrNoEncode :: String -> view
@@ -456,13 +427,13 @@ genNewId=  do
       return $ 'p':show n++prefseq  
 
 
----- | get the next ideitifier that will be created by genNewId
---getNextId :: (StateType m ~ MFlowState,MonadState  m) =>  m String
---getNextId=  do
---      st <- get
---      let n= mfSequence st
---          prefseq=  mfPrefix st
---      return $ 'p':show n++prefseq
+-- | get the next ideitifier that will be created by genNewId
+getNextId :: (StateType m ~ MFlowState,MonadState  m) =>  m String
+getNextId=  do
+      st <- get
+      let n= mfSequence st
+          prefseq=  mfPrefix st
+      return $ 'p':show n++prefseq
 
 
 -- | Display a text box and return a non empty String
@@ -507,6 +478,63 @@ inputPassword :: (StateType (View view m) ~ MFlowState,FormInput view,
 inputPassword= getPassword
 
 newtype Radio a= Radio a
+
+
+
+-- | Implement a radio button
+-- the parameter is the name of the radio group
+setRadio :: (FormInput view,  MonadIO m,
+             Read a, Typeable a, Eq a, Show a) =>
+            a -> String -> View view m  (Radio a)
+setRadio v n= ret where
+ ret= View $ do
+  st <- get
+  put st{needForm= HasElems}
+  mn <- getParam1 n `asTypeOf` typeresult ret
+  let str = if typeOf v == typeOf(undefined :: String)
+                   then unsafeCoerce v else show v
+  return $ FormElm (finput n "radio" str
+          ( isValidated mn  && v== fromValidated mn) Nothing)
+          (fmap Radio $ valToMaybe mn)
+
+ typeresult :: View v m (Radio a) -> StateT MFlowState m (ParamResult v a)
+ typeresult = undefined
+
+-- | encloses a set of Radio boxes. Return the option selected
+getRadio
+  :: (Monad (View view m), Monad m, Functor m, FormInput view) =>
+     [String -> View view m (Radio a)] -> View view m a
+getRadio rs=  do
+        id <- genNewId
+        Radio r <- firstOf $ map (\r -> r id)  rs
+        return r
+
+data CheckBoxes = CheckBoxes [String]
+
+instance Monoid CheckBoxes where
+  mappend (CheckBoxes xs) (CheckBoxes ys)= CheckBoxes $ xs ++ ys
+  mempty= CheckBoxes []
+
+
+-- | Display a text box and return the value entered if it is readable( Otherwise, fail the validation)
+setCheckBox :: (FormInput view,  MonadIO m) =>
+                Bool -> String -> View view m  CheckBoxes
+setCheckBox checked v= View $ do
+  n <- genNewId
+  st <- get
+  put st{needForm= HasElems}
+  checked <- withElem n $ \e -> getAttr e "checked"
+  let strs= if  checked== "true" then [v] else []
+  let mn= if null strs then False else True
+      ret= Just $ CheckBoxes  strs  -- !> show strs
+
+  return $ FormElm
+      ( finput n "checkbox" v( (not $ null strs) || mn) Nothing)
+      ret
+
+
+genCheckBoxes :: (Monad m, FormInput view) =>  View view m  CheckBoxes ->  View view m  CheckBoxes
+genCheckBoxes = Prelude.id
 
 
 --
@@ -718,7 +746,6 @@ wraw x= View . return . FormElm x $ Just ()
 
 
 instance   FormInput Perch  where
-    toByteString  =  error "toByteString not defined"
     fromStr = toElem
     fromStrNoEncode  = toElem
     ftag n v =  nelem n `child` v
@@ -785,20 +812,68 @@ delSData :: (StateType m ~ MFlowState, MonadState  m,Typeable a) => a -> m ()
 delSData= delSessionData
 
 ---------------------------
+data EvData =  NoData | MouseClick Int (Int, Int) | Mouse (Int, Int) | Key Int deriving Show
+data EventData= EventData{ evName :: String, evData :: EvData}
 
-callbacks= unsafePerformIO $ newMVar $ return Nothing
+eventData= unsafePerformIO . newMVar $ EventData "OnLoad" NoData
 
-raiseEvent :: Widget a -> Event IO b ->Widget a
+getEventData :: MonadIO m => m EventData
+getEventData= liftIO $ readMVar eventData
+
+raiseEvent ::  Widget a -> Event IO b ->Widget a
 raiseEvent w event = View $ do
  r <- gets process
  case r of
   EventF x f  -> do
    FormElm render mx <- runView  w
-   let bcs = do
-       bc <- liftIO $ readMVar callbacks
-       bc
-   let render' = addEvent (render :: Perch) event
-                ( (x `addto` f >>  bcs )  >> return ())
+   let proc = x `addto` f  >> return ()
+   let nevent= evtName event :: String
+   let putevdata dat= modifyMVar_ eventData $ const $ return dat
+   let render' =  case event of
+        OnLoad    -> addEvent (render :: Perch) event $ putevdata (EventData nevent NoData) >> proc
+        OnUnload  -> addEvent (render :: Perch) event $ putevdata (EventData nevent NoData) >> proc
+        OnChange  -> addEvent (render :: Perch) event $ putevdata (EventData nevent NoData) >> proc
+        OnFocus   -> addEvent (render :: Perch) event $ putevdata (EventData nevent NoData) >> proc
+        OnBlur    -> addEvent (render :: Perch) event $ putevdata (EventData nevent NoData) >> proc
+
+        OnMouseMove -> addEvent (render :: Perch) event $ \(x,y) -> do
+                         putevdata $ EventData nevent $ Mouse(x,y)
+                         proc
+
+        OnMouseOver -> addEvent (render :: Perch) event $ \(x,y) -> do
+                         putevdata $  EventData nevent $ Mouse(x,y)
+                         proc
+
+        OnMouseOut -> addEvent (render :: Perch) event proc
+        OnClick -> addEvent (render :: Perch) event $ \i (x,y) -> do
+                         putevdata $  EventData nevent $ MouseClick i (x,y)
+                         proc
+
+        OnDblClick -> addEvent (render :: Perch) event $ \i (x,y) -> do
+                         putevdata $ EventData nevent $ MouseClick i (x,y)
+                         proc
+
+        OnMouseDown -> addEvent (render :: Perch) event $ \i (x,y) -> do
+                         putevdata $ EventData nevent $ MouseClick i (x,y)
+                         proc
+
+        OnMouseUp -> addEvent (render :: Perch) event $ \i (x,y) -> do
+                         putevdata $ EventData nevent $ MouseClick i (x,y)
+                         proc
+
+        OnKeyPress -> addEvent (render :: Perch) event $ \i -> do
+                         putevdata $ EventData nevent $ Key i
+                         proc
+
+        OnKeyUp  -> addEvent (render :: Perch) event $ \i -> do
+                         putevdata $ EventData nevent $ Key i
+                         proc
+
+        OnKeyDown -> addEvent (render :: Perch) event $ \i -> do
+                         putevdata $ EventData nevent $ Key i
+                         proc
+
+
    return $ FormElm render' mx
    where
    addto f f'=  do
@@ -808,24 +883,30 @@ raiseEvent w event = View $ do
        Just x' ->  f' x'
 
 
+
+
 -- | executes a widget each t milliseconds until it validates and return ()
+wtimeout :: Int -> Widget () -> Widget ()
 wtimeout t w= View $ do
     id <- genNewId
     let f= setTimeout t $ do
-        r <- runWidgetId w id
-        case r of
-          Nothing -> f
-          Just ()  -> return ()
+        me <- elemById  id
+        case me of
+         Nothing -> return ()
+         Just e ->do
+            r <- clearChildren e >> runWidget w e
+            case r of
+              Nothing -> f
+              Just ()  -> return ()
 
     liftIO  f
     runView $ identified id w
 
 
-
 globalState= unsafePerformIO $ newMVar mFlowState0
 
 
-runWidgetId :: Widget b -> String  -> IO (Maybe b)
+runWidgetId :: Widget b -> ElemID  -> IO (Maybe b)
 runWidgetId ac id =  do
 
    withElem id $  \e -> do
@@ -834,7 +915,7 @@ runWidgetId ac id =  do
 
 
 
---runWidgetSt ::Widget b -> Elem -> MFlowState -> IO ()
+runWidget :: Widget b -> Elem  -> IO (Maybe b)
 runWidget action e = do
      st <- takeMVar globalState
      (FormElm render mx, s) <- runStateT (runView action') st
@@ -848,3 +929,5 @@ runWidget action e = do
           return $ FormElm mempty Nothing)
 
 
+at :: ElemID -> Widget a -> Widget (Maybe a)
+at id w= liftIO $ runWidgetId w id
