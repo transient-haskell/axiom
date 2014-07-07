@@ -56,12 +56,10 @@ If the event is raised within a widget that does not generate a valid result (re
 the remaining widgets continue unchanged and unevaluated.
 
 Status
-======
+====== 
 
-Propagation of events upstream has proved to be hard. A higuer level of spreadsheet like behaviour can be simulated with the cell abstraction (not yet finished) but the current example show behaviours typical of spreadsheets
-and window aplications as well as console applications.
-
-At this moment only text boxes and buttons work.  I have to add the dropdowns option buttons and wlinks.  so that full window like applications can be created. I just follow the path of higher resistance and leave the easy things for later.
+Non-local modifications of the DOM works with the new "at" primitive. Option buttons and checkboxes works with the
+same syntax than MFlow.
 
 How to run
 ----------
