@@ -14,7 +14,7 @@
 
 {-# LANGUAGE  MultiParamTypeClasses, FlexibleContexts, FlexibleInstances
     , TypeFamilies, DeriveDataTypeable, UndecidableInstances, ExistentialQuantification
-    , GADTs
+    , GADTs,OverloadedStrings
     #-}
 module View  where
 import Control.Applicative
@@ -27,6 +27,7 @@ import Unsafe.Coerce
 import Data.Maybe
 import Haste.DOM
 import Haste
+import Haste.Foreign(ffi)
 import Unsafe.Coerce
 import System.IO.Unsafe
 import Control.Concurrent.MVar
@@ -99,6 +100,10 @@ mFlowState0= MFlowState "" 0 NoElems  (EventF (return Nothing)
 
 instance Functor (FormElm view ) where
   fmap f (FormElm form x)= FormElm form (fmap f x)
+
+instance (Monoid view) => Monoid (FormElm view a) where
+  mempty= FormElm mempty Nothing
+  mappend (FormElm f1 x1) (FormElm f2 x2)= FormElm (f1 <> f2) (x1 <|> x2)
 
 instance  (Monad m,Functor m) => Functor (View view m) where
   fmap f x= View $   fmap (fmap f) $ runView x
@@ -484,30 +489,38 @@ newtype Radio a= Radio a
 -- | Implement a radio button
 -- the parameter is the name of the radio group
 setRadio :: (FormInput view,  MonadIO m,
-             Read a, Typeable a, Eq a, Show a) =>
+             Typeable a, Eq a, Show a) =>
             a -> String -> View view m  (Radio a)
-setRadio v n= ret where
- ret= View $ do
+setRadio v n= View $ do
+  id <- genNewId
   st <- get
   put st{needForm= HasElems}
-  mn <- getParam1 n `asTypeOf` typeresult ret
-  let str = if typeOf v == typeOf(undefined :: String)
+  me <- liftIO $ elemById id
+  checked <- case me of
+       Nothing -> return ""
+       Just e  -> liftIO $   getProp e "checked"
+  let strs= if  checked=="true" then Just v else Nothing
+--  let mn= if null strs then False else True
+      ret= fmap  Radio  strs 
+      str = if typeOf v == typeOf(undefined :: String)
                    then unsafeCoerce v else show v
-  return $ FormElm (finput n "radio" str
-          ( isValidated mn  && v== fromValidated mn) Nothing)
-          (fmap Radio $ valToMaybe mn)
+  return $ FormElm
+      ( finput id "radio" str ( isJust strs ) Nothing `attrs` [("name",n)])
+      ret
+ 
 
- typeresult :: View v m (Radio a) -> StateT MFlowState m (ParamResult v a)
- typeresult = undefined
+setRadioActive rs x= setRadio rs x `raiseEvent` OnClick
 
 -- | encloses a set of Radio boxes. Return the option selected
 getRadio
   :: (Monad (View view m), Monad m, Functor m, FormInput view) =>
      [String -> View view m (Radio a)] -> View view m a
-getRadio rs=  do
-        id <- genNewId
-        Radio r <- firstOf $ map (\r -> r id)  rs
-        return r
+getRadio ws = View $ do
+   id <- genNewId
+   fs <- mapM (\w -> runView (w id)) ws
+   let FormElm render mx = mconcat fs
+   return $ FormElm render $ fmap (\(Radio r) -> r) mx
+
 
 data CheckBoxes = CheckBoxes [String]
 
@@ -520,21 +533,24 @@ instance Monoid CheckBoxes where
 setCheckBox :: (FormInput view,  MonadIO m) =>
                 Bool -> String -> View view m  CheckBoxes
 setCheckBox checked v= View $ do
-  n <- genNewId
+  n  <- genNewId
   st <- get
   put st{needForm= HasElems}
-  checked <- withElem n $ \e -> getAttr e "checked"
-  let strs= if  checked== "true" then [v] else []
-  let mn= if null strs then False else True
-      ret= Just $ CheckBoxes  strs  -- !> show strs
+  me <- liftIO $ elemById n
+  checked <- case me of
+       Nothing -> return ""
+       Just e  -> liftIO $  getProp e "checked"
+  let strs= if  checked=="true" then [v] else []
+--  let mn= if null strs then False else True
+      ret= Just $ CheckBoxes  strs 
 
   return $ FormElm
-      ( finput n "checkbox" v( (not $ null strs) || mn) Nothing)
+      ( finput n "checkbox" v ( (not $ null strs) ) Nothing)
       ret
+ 
 
-
-genCheckBoxes :: (Monad m, FormInput view) =>  View view m  CheckBoxes ->  View view m  CheckBoxes
-genCheckBoxes = Prelude.id
+getCheckBoxes :: (Monad m, FormInput view) =>  View view m  CheckBoxes ->  View view m  CheckBoxes
+getCheckBoxes = Prelude.id
 
 
 --
@@ -812,7 +828,7 @@ delSData :: (StateType m ~ MFlowState, MonadState  m,Typeable a) => a -> m ()
 delSData= delSessionData
 
 ---------------------------
-data EvData =  NoData | MouseClick Int (Int, Int) | Mouse (Int, Int) | Key Int deriving Show
+data EvData =  NoData | Click Int (Int, Int) | Mouse (Int, Int) | Key Int deriving Show
 data EventData= EventData{ evName :: String, evData :: EvData}
 
 eventData= unsafePerformIO . newMVar $ EventData "OnLoad" NoData
@@ -846,19 +862,19 @@ raiseEvent w event = View $ do
 
         OnMouseOut -> addEvent (render :: Perch) event proc
         OnClick -> addEvent (render :: Perch) event $ \i (x,y) -> do
-                         putevdata $  EventData nevent $ MouseClick i (x,y)
+                         putevdata $  EventData nevent $ Click i (x,y)
                          proc
 
         OnDblClick -> addEvent (render :: Perch) event $ \i (x,y) -> do
-                         putevdata $ EventData nevent $ MouseClick i (x,y)
+                         putevdata $ EventData nevent $ Click i (x,y)
                          proc
 
         OnMouseDown -> addEvent (render :: Perch) event $ \i (x,y) -> do
-                         putevdata $ EventData nevent $ MouseClick i (x,y)
+                         putevdata $ EventData nevent $ Click i (x,y)
                          proc
 
         OnMouseUp -> addEvent (render :: Perch) event $ \i (x,y) -> do
-                         putevdata $ EventData nevent $ MouseClick i (x,y)
+                         putevdata $ EventData nevent $ Click i (x,y)
                          proc
 
         OnKeyPress -> addEvent (render :: Perch) event $ \i -> do
@@ -929,5 +945,9 @@ runWidget action e = do
           return $ FormElm mempty Nothing)
 
 
-at :: ElemID -> Widget a -> Widget (Maybe a)
-at id w= liftIO $ runWidgetId w id
+at :: ElemID -> Widget a -> Widget  a
+at id w= View $ do
+     st <- get
+     (FormElm render mx, s) <- liftIO $ runStateT (runView w) st
+     liftIO $ withElem id $ build render
+     return $ FormElm mempty mx

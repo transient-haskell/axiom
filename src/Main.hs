@@ -33,6 +33,10 @@ main= do
                      <<<  (td <<< drawcanvas
                      <|>   td <<< gallery
                      <|>   td <<< mouse )
+                <|> tr ! style "vertical-align:top"
+                     <<<  (td <<< checkButton
+                     <|>   td <<< radio)
+--                     <|>   td <<< naiveTodo)
                    ))
 
         <++  b << "bottom of the page"
@@ -208,7 +212,7 @@ gallery = p "this example show a image gallery. It advances each 20 seconds and 
 
 mouse :: Widget ()
 mouse= do
-    wraw (div  ! style "height:100px;background-color:green" $ "mouse events here")
+    wraw (div  ! style "height:100px;background-color:green;position:relative" $ "mouse events here")
                             `raiseEvent` OnMouseOut
                             `raiseEvent` OnMouseOver
                             `raiseEvent` OnMouseDown
@@ -220,3 +224,43 @@ mouse= do
     evdata  <- getEventData
     wraw $ p << ( (evName evdata) ++" "++ show (evData evdata))
 
+
+checkButton=do
+  CheckBoxes rs <- getCheckBoxes(
+                   ((setCheckBox False "Red"    <++ b "red")   `raiseEvent` OnClick)
+                <> ((setCheckBox False "Green"  <++ b "green") `raiseEvent` OnClick)
+                <> ((setCheckBox False "blue"   <++ b "blue")  `raiseEvent` OnClick))
+  wraw $ p << show rs
+
+radio= do
+   r <- p << b <<  "Radio buttons"
+        ++> getRadio [\n -> fromStr v ++> setRadioActive v n | v <- ["red","green","blue"]]
+
+   wraw $ p << ( show r ++ " selected")
+
+
+--newtype Tasks = Tasks [String] deriving Typeable
+--
+--naiveTodo= table <<< (do
+--  task  <- tr <<< td <<< (inputString Nothing `raiseEvent` OnKeyUp)
+--  EventData _ (Key k) <- getEventData
+--  when( k == 13)  $ do
+--     Tasks tasks <- getSData <|> return (Tasks [])
+--     setSData . Tasks $ task:tasks
+--
+--     at "list" $ mapM_ display $ task:tasks
+--     return ()
+-- <|>
+--  wraw (div ! Haste.Perch.id "list" $ noHtml))
+--
+--data TaskType = Create | Done | Destroy
+--
+--display task= tr  <<< ((td <<< setCheckBox False "" `raiseEvent` OnClick )
+--
+--                  <**  (td <<< wraw  (p task))
+--
+----                  **>  (td <<< do (inputString Nothing <! [("class","destroy")]) `raiseEvent` OnClick
+----                                  return Destroy)
+--                                  )
+--
+--
