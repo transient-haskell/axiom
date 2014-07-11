@@ -46,7 +46,7 @@ https://github.com/agocorona/playground/blob/master/src/Main.hs
 How it works
 ============
 Under the hood there is the good old formlet concept. It uses monadic and applicative combinators
-The very same ones used by MFlow in the server side. While the server side widgets of MFlow
+The same ones used by MFlow in the server side. While the server side widgets of MFlow
 produce blaze-html output converted to bytestrings, playground construct a builder function that
 creates a tree in the HTML DOM when executed. This builder (perch) is monoidal so the formlet
 can aggregate subtrees. When some event happens in the widget subtree, the widget executes
@@ -58,8 +58,11 @@ the remaining widgets continue unchanged and unevaluated.
 Status
 ====== 
 
-Non-local modifications of the DOM works with the new "at" primitive. Option buttons and checkboxes works with the
-same syntax than MFlow.
+Non-local modifications of the DOM works with the new "at" primitive.
+Option buttons, checkboxes and drop-down buttons works with the same syntax than MFlow.
+
+The Cell module has Lens-like primitives for updates of form elements and experimental math
+operations with form elements as spreadsheet cells. Currently it is at the beginning.
 
 How to run
 ----------
