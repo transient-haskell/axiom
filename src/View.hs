@@ -445,9 +445,9 @@ getNextId=  do
 getString  :: (StateType (View view m) ~ MFlowState,FormInput view,Monad(View view m),MonadIO m) =>
      Maybe String -> View view m String
 getString ms = getTextBox ms
-     `validate`
-     \s -> if Prelude.null s then return (Just $ fromStr "")
-                    else return Nothing
+--     `validate`
+--     \s -> if Prelude.null s then return (Just $ fromStr "")
+--                    else return Nothing
 
 inputString  :: (StateType (View view m) ~ MFlowState,FormInput view,Monad(View view m),MonadIO m) =>
      Maybe String -> View view m String
@@ -608,28 +608,105 @@ getParamS look type1 mvalue= do
 
 
 
---getCurrentName :: MonadState (MFlowState view) m =>  m String
---getCurrentName= do
---     st <- get
---     let parm = mfSequence st
---     return $ "p"++show parm
+
+-- | Display a multiline text box and return its content
+getMultilineText :: (FormInput view
+                 ,  MonadIO m)
+                   => String
+                 ->  View view m String
+getMultilineText nvalue = res where
+ res= View $ do
+    tolook <- genNewId
+    r <- getParam1 tolook  `asTypeOf` typef res
+    case r of
+       Validated x        -> return $ FormElm (ftextarea tolook  x) $ Just x
+       NotValidated s err -> return $ FormElm (ftextarea tolook   s)  Nothing
+       NoParam            -> return $ FormElm (ftextarea tolook  nvalue)  Nothing
+    where
+    typef :: View v m String -> StateT MFlowState m (ParamResult v a)
+    typef = undefined
+
+-- | A synonim of getMultilineText
+textArea :: (FormInput view
+                 ,  MonadIO m)
+                   => String
+                 ->  View view m String
+textArea= getMultilineText
 
 
----- | Display a multiline text box and return its content
---getMultilineText :: (FormInput view
---                 ,  Monad m)
---                   => String
---                 ->  View view m String
---getMultilineText nvalue = View $ do
---    tolook <- genNewId
+--getBool :: (FormInput view,
+--      Monad m, Monad (View view m), Functor m) =>
+--      Bool -> String -> String -> View view m Bool
+getBool mv truestr falsestr= do
+   r <- getSelect $   setOption truestr (fromStr truestr)  <! (if mv then [("selected","true")] else [])
+                  <|> setOption falsestr(fromStr falsestr) <! if not mv then [("selected","true")] else []
+   if  r == truestr  then return True else return False
+
+
+
+-- | Display a dropdown box with the options in the first parameter is optionally selected
+-- . It returns the selected option.
+getSelect :: (FormInput view,
+      MonadIO m,Typeable a, Read a) =>
+      View view m (MFOption a) ->  View view m  a
+getSelect opts = res where
+  res= View $ do
+    tolook <- genNewId
+    st <- get
+    put st{needForm= HasElems}
+    r <- getParam1 tolook `asTypeOf` typef res
+--    setSessionData $ fmap MFOption $ valToMaybe r
+    FormElm form mr <- (runView opts)
 --
---    r <- getParam1 tolook 
---    case r of
---       Validated x        -> return $ FormElm (ftextarea tolook  x) $ Just x
---       NotValidated s err -> return $ FormElm (ftextarea tolook  s)  Nothing
---       NoParam            -> return $ FormElm (ftextarea tolook  nvalue)  Nothing
+    return $ FormElm (fselect tolook  form)  $ valToMaybe r
+
+    where
+    typef :: View v m a -> StateT MFlowState m (ParamResult v a)
+    typef = undefined
+
+newtype MFOption a= MFOption a deriving Typeable
+
+instance (FormInput view,Monad m, Functor m) => Monoid (View view m (MFOption a)) where
+  mappend =  (<|>)
+  mempty = Control.Applicative.empty
+
+-- | Set the option for getSelect. Options are concatenated with `<|>`
+setOption
+  :: (Monad m, Monad (View view m), Show a, Eq a, Typeable a, FormInput view) =>
+     a -> view -> View view m (MFOption a)
+setOption n v = View $ do
+--  mo <- getSessionData
+  runView $ setOption1 n v False
 
 
+-- | Set the selected option for getSelect. Options are concatenated with `<|>`
+setSelectedOption
+  :: (Monad m, Monad(View view m), Show a, Eq a, Typeable a, FormInput view) =>
+     a -> view -> View view m (MFOption a)
+setSelectedOption n v= View $ do
+--  mo <- getSessionData
+  runView $ setOption1 n v True
+--   Just Nothing -> setOption1 n v True
+--   Just (Just o) -> setOption1 n v $   n == o
+
+
+setOption1 :: (FormInput view,
+      Monad m, Typeable a, Eq a, Show a) =>
+      a -> view -> Bool ->  View view m  (MFOption a)
+setOption1 nam  val check= View $ do
+    let n = if typeOf nam == typeOf(undefined :: String)
+                   then unsafeCoerce nam
+                   else show nam
+
+    return . FormElm (foption n val check)  . Just $ MFOption nam
+
+
+wlabel
+  :: (Monad m, FormInput view) => view -> View view m a -> View view m a
+wlabel str w =View $ do
+   id <- getNextId
+   FormElm render mx <- runView w
+   return $ FormElm (ftag "label" str `attrs` [("for",id)] <> render) mx
 
 
 resetButton :: (FormInput view, Monad m) => String -> View view m ()
@@ -758,9 +835,15 @@ stop= Control.Applicative.empty
 -- | Render raw view formatting. It is useful for displaying information.
 wraw :: Monad m => view -> View view m ()
 wraw x= View . return . FormElm x $ Just ()
+
+-- | True if the widget has no valid input
+isEmpty :: Widget a -> Widget Bool
+isEmpty w= View $ do
+  FormElm r mv <- runView w
+  return $ FormElm r $ Just $ isNothing mv
+
+
 -------------------------
-
-
 instance   FormInput Perch  where
     fromStr = toElem
     fromStrNoEncode  = toElem
@@ -817,12 +900,12 @@ getSData= View $ do
 setSessionData  x=
   modify $ \st -> st{mfData= M.insert  (typeOf x ) (unsafeCoerce x) (mfData st)}
 
--- | a shorter sinonym for setSessionData
+-- | a shorter name for setSessionData
 setSData ::  (StateType m ~ MFlowState, MonadState  m,Typeable a) => a -> m ()
 setSData= setSessionData
 
 delSessionData x=
-  modify $ \st -> st{mfData= M.delete  (typeOf x ) (mfData st)}
+  modify $ \st -> st{mfData= M.delete (typeOf x ) (mfData st)}
 
 delSData :: (StateType m ~ MFlowState, MonadState  m,Typeable a) => a -> m ()
 delSData= delSessionData
@@ -944,10 +1027,35 @@ runWidget action e = do
           liftIO $ putMVar globalState st
           return $ FormElm mempty Nothing)
 
+data UpdateMethod= Append | Prepend | Insert deriving Show
 
-at :: ElemID -> Widget a -> Widget  a
-at id w= View $ do
+at :: ElemID -> UpdateMethod -> Widget a -> Widget  a
+at id method w= View $ do
      st <- get
      (FormElm render mx, s) <- liftIO $ runStateT (runView w) st
-     liftIO $ withElem id $ build render
+     put s
+     liftIO $ withElem id $ \e -> case method of
+         Insert -> do
+                 clearChildren e
+                 build render e
+         Append -> do
+                 build render e
+
+         Prepend -> do
+                 span <- newElem "span"
+                 es <- getChildren e
+                 addChildBefore span e $ Prelude.head es
+                 build render span
+                 
      return $ FormElm mempty mx
+
+
+
+elemsByTagName :: ElemID -> IO [Elem]
+elemsByTagName = ffi "(function(s){document.getElementsByTagName(s)})"
+
+parent :: Elem -> IO Elem
+parent= ffi "(function(e){return e.parentNode;})"
+
+evalFormula :: String  -> IO Double
+evalFormula= ffi "(function(exp){ return eval(exp);})"

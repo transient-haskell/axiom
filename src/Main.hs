@@ -20,26 +20,37 @@ import Data.Default
 
 main= do
    withElem "idelem" . runWidget $
-        h1 ! style "text-align:center" << "hplayground examples" ++>
-        (table  <<<(tr ! atr "style" "vertical-align:top"
-                     <<< ((td <<< sumTwo)
-                     <|>  (td <<< sumfold 3)
-                     <|>  (td <<< sumRecursive))
-                <|> tr ! atr "style" "vertical-align:top"
-                     <<<  (td <<< counter 3
-                     <|>   td <<< sumCell
-                     <|>   td <<< showpascal 4)
+    do  -- PerchM monad
+      h1 ! style "text-align:center" $ "hplayground examples"
+      h3 $ center $ do
+         a ! href "https://github.com/agocorona/hplayground" $ "Git repository"
+         toElem "   "
+         a ! href "https://github.com/agocorona/hplayground/blob/master/src/Main.hs" $ "Examples code"
+         toElem "   "
+         a ! href "haskell-web.blogspot.com.es/2014/07/hplayground-translate-your-console.html" $ "Article"
+    ++> do   -- Widget monad
+        (table ! style "border-collapse:collapse"
+                <<<(tr ! style "vertical-align:top"
+                     <<< ( tds <<< sumTwo
+                     <|>   tds <<< sumfold 3
+                     <|>   tds <<< sumRecursive)
                 <|> tr ! style "vertical-align:top"
-                     <<<  (td <<< drawcanvas
-                     <|>   td <<< gallery
-                     <|>   td <<< mouse )
+                     <<<  (tds <<< (counter 3 <|> buttons)
+                     <|>   tds <<< sumCell
+                     <|>   tds <<< showpascal 4)
                 <|> tr ! style "vertical-align:top"
-                     <<<  (td <<< checkButton
-                     <|>   td <<< radio)
---                     <|>   td <<< naiveTodo)
+                     <<<  (tds <<< formWidget
+                     <|>   tds <<< palindrome
+                     <|>   tds <<< naiveTodo)
+                <|> tr ! style "vertical-align:top"
+                     <<<  (tds <<< drawcanvas
+                     <|>   tds <<< gallery
+                     <|>   tds <<< mouse )
                    ))
 
         <++  b << "bottom of the page"
+   where
+   tds= td ! style "padding:15px;border-style:dotted"
 
 -- Dont't be scared by the operators:
 -- <|> is the Alternantive combinator, to combine Widget() entries
@@ -84,18 +95,25 @@ instance Monoid Int where
 
 
 
+newtype Counter= Counter Int deriving Typeable
 
+counter n = p "Two counters. One is pure and recursive, the other is stateful"
+            ++> br ++> (center <<< (counter1 n <|> counter2 n))
 
-counter :: Int -> Widget ()
-counter n = p " A counter. wcallback erases the previous rendering of the widget an regenerates it again "
-            ++> br ++> counter1 n
  where
- counter1 n= (b (show n) ++> onemore)  `wcallback` (const $ counter1 $ n +1)
+    -- a "pure" counter
+    counter1 :: Int -> Widget ()
+    counter1 n= (b (show n) ++> onemore)  `wcallback` (const $ counter1 $ n +1)
 
- onemore=  submitButton "+" `raiseEvent` OnClick
+    onemore=  submitButton "+" `raiseEvent` OnClick
 
 
-
+    -- a stateful counter
+    counter2 n = do
+      onemore -- isEmpty (getSData :: Widget Counter ) <|> (onemore >> return True)
+      Counter n <- getSData <|> return (Counter n)
+      wraw $ b (show n)
+      setSessionData . Counter $ n +1
 
 
 
@@ -132,20 +150,13 @@ sumCell = p  "This widget sum recursively n numbers, but remember the\
 
 
 
-
-
-
-
 -- pascal triangle http://www.haskell.org/haskellwiki/Blow_your_mind
 
 pascal = iterate (\row -> zipWith (+) ([0] ++ row) (row ++ [0])) [1] :: [[Int]]
 
 showpascal n= p << ("Show " ++ show n ++ " rows of the Pascal triangle ")
-   ++> mconcat[p ! atr "style" "text-align:center" $ row | row <- take n pascal]
+   ++> mconcat[p ! style "text-align:center" $ row | row <- take n pascal]
    ++> empty   -- the applicative empty === noWidget
-
-
-
 
 
 
@@ -167,7 +178,7 @@ drawcanvas=
   draw expr= liftIO $ do
     Just can <- getCanvasById "canvas"
     let range= [-10..10]
-        exprs = map (\v -> subst 'x' (show v) expr) range
+        exprs = Prelude.map (\v -> subst 'x' (show v) expr) range
     ps <- mapM evalFormula  exprs
     render can $ scale (3,1) $ translate (50,130) $ rotate pi $ stroke $do
         line (-10,0) (10,0)
@@ -182,9 +193,6 @@ drawcanvas=
 
 
 
-
-
-
 newtype GalleryIndex= G Int deriving Typeable
 
 gallery :: Widget ()
@@ -195,7 +203,7 @@ gallery = p "this example show a image gallery. It advances each 20 seconds and 
   let i' = if i == length gall-1  then 0 else  i+1
   setSData $ G i'
   wraw $ do
-      img ! src (gall !! i) ! width "100%" ! height "100%" $ noHtml   -- raw Perch code
+      img ! src (gall !! i) ! width "100%" ! height "100%"    -- raw Perch code
       br
   submitButton ">" `raiseEvent` OnClick
  `wcallback` \_ -> gallery)
@@ -212,7 +220,7 @@ gallery = p "this example show a image gallery. It advances each 20 seconds and 
 
 mouse :: Widget ()
 mouse= do
-    wraw (div  ! style "height:100px;background-color:green;position:relative" $ "mouse events here")
+    wraw (div  ! style "height:100px;background-color:lightgreen;position:relative" $ h1 "Mouse events here")
                             `raiseEvent` OnMouseOut
                             `raiseEvent` OnMouseOver
                             `raiseEvent` OnMouseDown
@@ -224,43 +232,126 @@ mouse= do
     evdata  <- getEventData
     wraw $ p << ( (evName evdata) ++" "++ show (evData evdata))
 
+buttons= p "Different input elements:" ++> checkButton
+                                       **> br ++> br
+                                       ++> radio
+                                       **> br ++> br
+                                       ++> select
+    where
+    checkButton=do
+       CheckBoxes rs <- getCheckBoxes(
+                       ((setCheckBox False "Red"    <++ b "red")   `raiseEvent` OnClick)
+                    <> ((setCheckBox False "Green"  <++ b "green") `raiseEvent` OnClick)
+                    <> ((setCheckBox False "blue"   <++ b "blue")  `raiseEvent` OnClick))
+       wraw $ fromStr " returns: " <> b (show rs)
 
-checkButton=do
-  CheckBoxes rs <- getCheckBoxes(
-                   ((setCheckBox False "Red"    <++ b "red")   `raiseEvent` OnClick)
-                <> ((setCheckBox False "Green"  <++ b "green") `raiseEvent` OnClick)
-                <> ((setCheckBox False "blue"   <++ b "blue")  `raiseEvent` OnClick))
-  wraw $ p << show rs
+    radio= do
+       r <- getRadio [\n -> fromStr v ++> setRadioActive v n | v <- ["red","green","blue"]]
 
-radio= do
-   r <- p << b <<  "Radio buttons"
-        ++> getRadio [\n -> fromStr v ++> setRadioActive v n | v <- ["red","green","blue"]]
+       wraw $ fromStr " returns: " <> b ( show r )
 
-   wraw $ p << ( show r ++ " selected")
+    select= do
+       r <- getSelect (   setOption "red"   (fromStr "red")  
+                      <|> setOption "green" (fromStr "green")
+                      <|> setOption "blue"  (fromStr "blue"))
+              `raiseEvent` OnClick
+
+       wraw $ fromStr " returns: " <> b ( show r )
+
+formWidget=  center <<< do -- PerchM monad
+      p "Fields of a form appear in sequence. \
+        \Some of the fields trigger events instantly. Some others use a button to trigger them. \
+        \It also contains option buttons, radio buttons etc"
+      p $ do
+        toElem "This formulary is the same than the one "
+        a ! href "http://mflowdemo.herokuapp.com/noscript/monadicwidgets/combination"
+          $ "run in the server by MFlow"
+  ++>
+   do
+      (n,s) <- (,) <$> p << "Who are you? "
+                   ++> getString Nothing <! hint "name"     <++ br
+                   <*> getString Nothing <! hint "surname"  <++ br
+                   <** submitButton "ok" `raiseEvent` OnClick <++ br
+
+      flag <- b << "Do you " ++> getRadio[radiob "work?",radiob "study?"] <++ br
+
+      r<- case flag of
+         "work?" -> Left  <$> b << "do you enjoy your work? "
+                              ++> getBool True "yes" "no"
+                              <** submitButton "ok" `raiseEvent` OnClick <++ br
+
+         "study?"-> Right <$> b << "do you study in "
+                              ++> getRadio[radiob "University"
+                                          ,radiob "High School"]
+
+      p << ("You are "++n++" "++s)
+
+        ++> case r of
+             Left fl ->   p << ("You work and it is " ++ show fl ++ " that you enjoy your work")
+                            ++> noWidget
+
+             Right stu -> p << ("You study at the " ++ stu)
+                            ++> noWidget
+
+  where
+  hint s= [("placeholder",s)]
+  radiob s n=  wlabel  (fromStr s) $ setRadioActive s n
 
 
---newtype Tasks = Tasks [String] deriving Typeable
---
---naiveTodo= table <<< (do
---  task  <- tr <<< td <<< (inputString Nothing `raiseEvent` OnKeyUp)
---  EventData _ (Key k) <- getEventData
---  when( k == 13)  $ do
---     Tasks tasks <- getSData <|> return (Tasks [])
---     setSData . Tasks $ task:tasks
---
---     at "list" $ mapM_ display $ task:tasks
---     return ()
--- <|>
---  wraw (div ! Haste.Perch.id "list" $ noHtml))
---
---data TaskType = Create | Done | Destroy
---
---display task= tr  <<< ((td <<< setCheckBox False "" `raiseEvent` OnClick )
---
---                  <**  (td <<< wraw  (p task))
---
-----                  **>  (td <<< do (inputString Nothing <! [("class","destroy")]) `raiseEvent` OnClick
-----                                  return Destroy)
---                                  )
---
---
+palindrome= p << "To search palindromes: one box present the other's reversed. It is also\
+                 \ an example of cell usage" ++> do
+ let entry= boxCell "entry" :: Cell String
+     revEntry= boxCell "revEntry"
+
+ r <- center <<< ((mk entry    Nothing `raiseEvent` OnKeyUp >>= return . Left) <++ br <|>
+                  (mk revEntry Nothing `raiseEvent` OnKeyUp >>= return . Right))
+
+ case r of
+  Left s  -> do
+   r  <- Cell.get entry >>= return . reverse
+   revEntry .= r
+  Right s -> do
+   r' <- Cell.get revEntry >>= return . reverse
+   entry .= r'
+
+
+newtype Tasks = Tasks [String] deriving Typeable
+
+data TaskAction =  Done | Destroy
+
+naiveTodo= do
+ p $ do   -- PerchM monad
+     toElem "Work in progress for a todo application to be added to "
+     a ! href "http://todomvc.com" $ "todomvc.com"
+ ++> todos
+
+ where
+
+ todos= center <<< h1 "todos" ++>
+     do
+      let entry = boxCell "todo"
+      task <- mk entry Nothing `raiseEvent` OnKeyUp
+      EventData _ (Key k) <- getEventData
+      when( k == 13)  $ do
+         entry .= ""
+         Tasks tasks <- getSData <|> return (Tasks [])
+         setSData . Tasks $ task:tasks
+
+         at "list" Insert $ foldl (<|>) mempty [ display t | t <- (task:tasks)]
+         return ()
+     <|>
+      wraw (div ! Haste.Perch.id "list" $ noHtml)
+
+
+
+ display task=  li <<< (do
+  CheckBoxes ch <- setCheckBox False "check" `raiseEvent` OnClick <|> return (CheckBoxes ["nocheck"])
+  case ch of
+        ["check"] -> wraw  $ b ! style "text-decoration:line-through;" $ task
+        _         -> wraw  $ b task
+
+--                  **>  (td <<< do (inputString Nothing <! [("class","destroy")]) `raiseEvent` OnClick
+--                                  return Destroy)
+                                  )
+
+
