@@ -16,12 +16,21 @@ source-repository head
     type: git
     location: http://github.com/agocorona/MFlow
 
-executable Main.hs
-    build-depends: base -any, transformers -any, monads-tf -any,
-                   containers -any, data-default -any, bytestring -any, text -any,
-                   haste-compiler -any
-    main-is: Main.hs
-    buildable: True
+extra-source-files: src/Main.hs, src/Main.html
+
+library
+    build-depends: base -any, transformers -any,
+                   containers -any, data-default -any, monads-tf,
+                   haste-lib -any, haste-perch -any
     hs-source-dirs: src .
-    other-modules: Cell View
+    exposed-modules: Haste.HPlay.View  Haste.HPlay.Cell
+
+--executable Main
+--    build-depends: base -any, transformers -any, monads-tf -any,
+--                   containers -any, data-default -any,
+--                   haste-lib -any, haste-perch
+--    main-is: Main.hs
+--    buildable: True
+--    hs-source-dirs: src .
+
 

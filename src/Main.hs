@@ -3,8 +3,8 @@ module Main where
 import Haste
 import Haste.DOM(withElem)
 import Haste.Graphics.Canvas
-import View
-import Cell
+import Haste.HPlay.View
+import Haste.HPlay.Cell as Cell
 import Haste.Perch
 import Control.Applicative
 import Control.Monad.IO.Class

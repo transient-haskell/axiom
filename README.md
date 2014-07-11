@@ -70,9 +70,18 @@ install Haste:
 
     >cabal install haste-compiler
 
+install perch
+
+    >haste-inst install haste-perch
+
 clone hplayground
   
     >git clone http://github.com/agocorona/hplayground
+
+
+install haplayground:
+
+    >haste-inst install
     
 compile
 
