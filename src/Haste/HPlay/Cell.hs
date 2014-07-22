@@ -29,7 +29,7 @@ data Cell  a = Cell { mk :: Maybe a -> Widget a
 
 
 
-boxCell id= Cell{ mk= \mv -> getParam (Just id) "text" mv
+boxCell id = Cell{ mk= \mv -> getParam (Just id) "text" mv
                 , setter= \ x -> withElem id $ \e -> setProp e "value" (show1 x)
                 , getter=  withElem id $ \e -> getProp e "value" >>= return . read1}
      where

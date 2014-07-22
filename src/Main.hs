@@ -7,19 +7,18 @@ import Haste.HPlay.View
 import Haste.HPlay.Cell as Cell
 import Haste.Perch
 import Control.Applicative
-import Control.Monad.IO.Class
 import Control.Monad.State
 import Control.Monad
 import Data.Monoid
 import Data.Typeable
-import Prelude hiding (div)
+import Prelude hiding (div,all)
 import qualified Data.Map as V
 import Data.Maybe
-import Data.Default
+import Data.List(isInfixOf)
 
 
-main= do
-   withElem "idelem" . runWidget $
+
+main=  withElem "idelem" . runWidget $
     do  -- PerchM monad
       h1 ! style "text-align:center" $ "hplayground examples"
       h3 $ center $ do
@@ -35,7 +34,7 @@ main= do
                      <|>   tds <<< sumfold 3
                      <|>   tds <<< sumRecursive)
                 <|> tr ! style "vertical-align:top"
-                     <<<  (tds <<< (counter 3 <|> buttons)
+                     <<<  (tds <<< (counter 3 <|> buttons <|> linksample)
                      <|>   tds <<< sumCell
                      <|>   tds <<< showpascal 4)
                 <|> tr ! style "vertical-align:top"
@@ -52,21 +51,21 @@ main= do
    where
    tds= td ! style "padding:15px;border-style:dotted"
 
--- Dont't be scared by the operators:
+-- Don't be scared by the operators:
 -- <|> is the Alternantive combinator, to combine Widget() entries
 -- and the <<< combinator simply encloses a widget within a HTML tag.
 -- ++> prepend HTML to a widget
 -- <++ postpend it
---
+
 
 
 sumTwo :: Widget ()
 sumTwo = p  "This widget sum two numbers and append the result. Using applicative and monadic expressions" ++>
   (p <<< do
      r <- (+) <$> fromStr "first number"  ++> br
-                   ++> inputInt Nothing `raiseEvent` OnKeyUp  <++ br
+                   ++> inputInt Nothing `fire` OnKeyUp  <++ br
               <*> fromStr "second number " ++> br
-                   ++> inputInt Nothing `raiseEvent` OnKeyUp  <++ br
+                   ++> inputInt Nothing `fire` OnKeyUp  <++ br
      p <<< fromStr "result: " ++>  b (show r) ++> return())
 
   where
@@ -76,7 +75,7 @@ sumRecursive :: Widget ()
 sumRecursive = p  "This widget sum recursively n numbers. When enters 0, present the result" ++> sumr 0
   where
   sumr r=do
-    r' <- inputInt Nothing `raiseEvent` OnKeyUp
+    r' <- inputInt Nothing `fire` OnKeyUp
     if r'== 0
       then  br ++> fromStr "result: " ++>  b (show r) ++> noWidget
       else do
@@ -86,7 +85,7 @@ sumRecursive = p  "This widget sum recursively n numbers. When enters 0, present
 sumfold :: Int -> Widget ()
 sumfold n =  p  ("This widget sum "++ show n ++" numbers and append the result using a fold") ++>
        (p <<< do
-         r <- foldl (<>)  (return 0) . take n $ repeat $ inputInt Nothing `raiseEvent` OnKeyUp <++  br
+         r <- foldl (<>)  (return 0) . take n $ repeat $ inputInt Nothing `fire` OnKeyUp <++  br
          br ++> fromStr "result: " ++>  b (show r) ++> return ())
 
 instance Monoid Int where
@@ -105,7 +104,7 @@ counter n = p "Two counters. One is pure and recursive, the other is stateful"
     counter1 :: Int -> Widget ()
     counter1 n= (b (show n) ++> onemore)  `wcallback` (const $ counter1 $ n +1)
 
-    onemore=  submitButton "+" `raiseEvent` OnClick
+    onemore=  submitButton "+" `fire` OnClick
 
 
     -- a stateful counter
@@ -130,7 +129,7 @@ sumCell = p  "This widget sum recursively n numbers, but remember the\
 
  cell i=  do
      stored <- Just <$> getNumber i <|> return Nothing
-     r' <- inputInt stored `raiseEvent` OnKeyUp <|> fromM stored
+     r' <- inputInt stored `fire` OnKeyUp <|> fromM stored
      addNumber i r'
      return r'
    where
@@ -167,10 +166,11 @@ drawcanvas=
       \ using javascript expressions"  ++>
 
  (center <<< do
-      let initial= "Math.pow(x,2)+x+10;"
-      expr <- inputString (Just initial) `raiseEvent` OnKeyUp <++ br <|> return initial
+      let initial= "x*x+x+10;"
+          sanitize str= if isInfixOf "alert" str then initial else str
+      expr <- inputString (Just initial) `fire` OnKeyUp <++ br <|> return initial
       wraw $ canvas ! Haste.Perch.id "canvas"  $ noHtml
-      wraw $ draw expr)
+      wraw $ draw $sanitize expr)
 
 
   where
@@ -205,7 +205,7 @@ gallery = p "this example show a image gallery. It advances each 20 seconds and 
   wraw $ do
       img ! src (gall !! i) ! width "100%" ! height "100%"    -- raw Perch code
       br
-  submitButton ">" `raiseEvent` OnClick
+  submitButton ">" `fire` OnClick
  `wcallback` \_ -> gallery)
 
   where
@@ -221,28 +221,33 @@ gallery = p "this example show a image gallery. It advances each 20 seconds and 
 mouse :: Widget ()
 mouse= do
     wraw (div  ! style "height:100px;background-color:lightgreen;position:relative" $ h1 "Mouse events here")
-                            `raiseEvent` OnMouseOut
-                            `raiseEvent` OnMouseOver
-                            `raiseEvent` OnMouseDown
-                            `raiseEvent` OnMouseMove
-                            `raiseEvent` OnMouseUp
-                            `raiseEvent` OnClick
-                            `raiseEvent` OnDblClick
-                            `raiseEvent` OnKeyPress
+                            `fire` OnMouseOut
+                            `fire` OnMouseOver
+                            `fire` OnMouseDown
+                            `fire` OnMouseMove
+                            `fire` OnMouseUp
+                            `fire` OnClick
+                            `fire` OnDblClick
+                            `fire` OnKeyPress
+                            `fire` OnKeyDown
+                            `fire` OnKeyUp
     evdata  <- getEventData
     wraw $ p << ( (evName evdata) ++" "++ show (evData evdata))
+
+linksample= br ++> wlink "Hey!" (toElem "This link say Hey!")`fire` OnClick >>= \r -> wraw( b (" returns "++ r))
 
 buttons= p "Different input elements:" ++> checkButton
                                        **> br ++> br
                                        ++> radio
                                        **> br ++> br
                                        ++> select
+                                       <++ br
     where
     checkButton=do
-       CheckBoxes rs <- getCheckBoxes(
-                       ((setCheckBox False "Red"    <++ b "red")   `raiseEvent` OnClick)
-                    <> ((setCheckBox False "Green"  <++ b "green") `raiseEvent` OnClick)
-                    <> ((setCheckBox False "blue"   <++ b "blue")  `raiseEvent` OnClick))
+       rs <- getCheckBoxes(
+                       ((setCheckBox False "Red"    <++ b "red")   `fire` OnClick)
+                    <> ((setCheckBox False "Green"  <++ b "green") `fire` OnClick)
+                    <> ((setCheckBox False "blue"   <++ b "blue")  `fire` OnClick))
        wraw $ fromStr " returns: " <> b (show rs)
 
     radio= do
@@ -254,7 +259,7 @@ buttons= p "Different input elements:" ++> checkButton
        r <- getSelect (   setOption "red"   (fromStr "red")  
                       <|> setOption "green" (fromStr "green")
                       <|> setOption "blue"  (fromStr "blue"))
-              `raiseEvent` OnClick
+              `fire` OnClick
 
        wraw $ fromStr " returns: " <> b ( show r )
 
@@ -271,14 +276,14 @@ formWidget=  center <<< do -- PerchM monad
       (n,s) <- (,) <$> p << "Who are you? "
                    ++> getString Nothing <! hint "name"     <++ br
                    <*> getString Nothing <! hint "surname"  <++ br
-                   <** submitButton "ok" `raiseEvent` OnClick <++ br
+                   <** submitButton "ok" `fire` OnClick <++ br
 
       flag <- b << "Do you " ++> getRadio[radiob "work?",radiob "study?"] <++ br
 
       r<- case flag of
          "work?" -> Left  <$> b << "do you enjoy your work? "
                               ++> getBool True "yes" "no"
-                              <** submitButton "ok" `raiseEvent` OnClick <++ br
+                              <** submitButton "ok" `fire` OnClick <++ br
 
          "study?"-> Right <$> b << "do you study in "
                               ++> getRadio[radiob "University"
@@ -303,8 +308,8 @@ palindrome= p << "To search palindromes: one box present the other's reversed. I
  let entry= boxCell "entry" :: Cell String
      revEntry= boxCell "revEntry"
 
- r <- center <<< ((mk entry    Nothing `raiseEvent` OnKeyUp >>= return . Left) <++ br <|>
-                  (mk revEntry Nothing `raiseEvent` OnKeyUp >>= return . Right))
+ r <- center <<< ((mk entry    Nothing `fire` OnKeyUp >>= return . Left) <++ br <|>
+                  (mk revEntry Nothing `fire` OnKeyUp >>= return . Right))
 
  case r of
   Left s  -> do
@@ -330,7 +335,7 @@ naiveTodo= do
  todos= center <<< h1 "todos" ++>
      do
       let entry = boxCell "todo"
-      task <- mk entry Nothing `raiseEvent` OnKeyUp
+      task <- mk entry Nothing `fire` OnKeyUp
       EventData _ (Key k) <- getEventData
       when( k == 13)  $ do
          entry .= ""
@@ -345,13 +350,11 @@ naiveTodo= do
 
 
  display task=  li <<< (do
-  CheckBoxes ch <- setCheckBox False "check" `raiseEvent` OnClick <|> return (CheckBoxes ["nocheck"])
+  CheckBoxes ch <- setCheckBox False "check" `fire` OnClick <|> return (CheckBoxes ["nocheck"])
   case ch of
         ["check"] -> wraw  $ b ! style "text-decoration:line-through;" $ task
         _         -> wraw  $ b task
 
---                  **>  (td <<< do (inputString Nothing <! [("class","destroy")]) `raiseEvent` OnClick
---                                  return Destroy)
                                   )
 
 
