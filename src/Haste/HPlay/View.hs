@@ -12,11 +12,53 @@
 --
 -----------------------------------------------------------------------------
 
-{-# LANGUAGE  MultiParamTypeClasses, FlexibleContexts, FlexibleInstances
+{-# LANGUAGE  FlexibleContexts, FlexibleInstances
     , TypeFamilies, DeriveDataTypeable, UndecidableInstances, ExistentialQuantification
-    , GADTs,OverloadedStrings
+    , GADTs
     #-}
-module Haste.HPlay.View  where
+module Haste.HPlay.View(
+Widget,
+
+-- * widget combinators and modifiers
+
+wcallback, (<+>), (**>), (<**), validate
+,firstOf, manyOf, allOf
+,(<<<),(<<),(<++),(++>),(<!)
+
+-- * basic widgets
+
+,getString,inputString, getInteger,inputInteger,
+getInt, inputInt,getPassword,inputPassword,
+setRadio,setRadioActive,getRadio
+,setCheckBox, getCheckBoxes
+,getTextBox, getMultilineText,textArea,getBool
+,getSelect,setOption,setSelectedOption, wlabel,
+resetButton,inputReset, submitButton,
+inputSubmit, wlink, noWidget, stop,wraw, isEmpty
+
+-- * out of flow updates
+,at, UpdateMethod(..)
+
+-- * Session data storage
+,getSessionData,getSData,setSessionData,setSData
+,delSessionData,delSData
+
+-- * reactive and events
+,resetEventData,getEventData,EventData(..),EvData(..)
+,raiseEvent, fire, wake, react, pass
+,continueIf, wtimeout, Event(..)
+
+-- * running it
+,runWidget, runWidgetId, runBody, addHeader
+
+-- * Perch is reexported
+,module Haste.Perch
+
+-- * low level and internals
+,getParam
+,FormInput(..)
+
+)  where
 import Control.Applicative
 import Data.Monoid
 import Control.Monad.State
@@ -24,8 +66,8 @@ import Control.Monad.IO.Class
 import Data.Typeable
 import Unsafe.Coerce
 import Data.Maybe
-import Haste.DOM
 import Haste
+import Haste.Prim
 import Haste.Foreign(ffi)
 import Unsafe.Coerce
 import System.IO.Unsafe
@@ -167,9 +209,9 @@ instance Monad (View Perch IO) where
 --    fail msg= View . return $ FormElm [inRed msg] Nothing
 
 
-static w= View $ do
-   modify $ \st -> st{fixed=True}
-   runView w
+--static w= View $ do
+--   modify $ \st -> st{fixed=True}
+--   runView w
 
 instance (FormInput v,Monad (View v m), Monad m, Functor m, Monoid a) => Monoid (View v m a) where
   mappend x y = mappend <$> x <*> y  -- beware that both operands must validate to generate a sum
@@ -179,26 +221,13 @@ instance (FormInput v,Monad (View v m), Monad m, Functor m, Monoid a) => Monoid 
 -- | It is a callback in the view monad. The callback rendering substitutes the widget rendering
 -- when the latter is validated, without afecting the rendering of other widgets. This allow
 -- the simultaneous execution of different behaviours in different widgets in the
--- same page. The inspiration is the callback primitive in the Seaside Web Framework
--- that allows similar functionality (See <http://www.seaside.st>)
+-- same page.
 wcallback
-  ::  Widget a -> (a ->Widget b) ->Widget b
-wcallback  x' f' = View $ do
+  ::  Widget a -> (a ->Widget b) -> Widget b
+wcallback  x f = View $ do
    idhide <- genNewId
    id <- genNewId
-   let x = identified idhide x'
-   let f = delBefore idhide f'
-   contold <- setEventCont x f  id
-   FormElm form1 mk <- runView x
-   resetEventCont contold
-   let span= nelem "span" `attrs` [("id", id)]
-   case mk of
-     Just k  -> do
-        FormElm form2 mk <- runView $ f k
-        return $ FormElm (form1 <> (span `child`  form2)) mk
-     Nothing -> 
-        return $ FormElm  (form1 <> span)  Nothing
-                        
+   runView $ identified idhide x >>= delBefore idhide f                        
    where
    delBefore id f = \x -> View $ do
      FormElm render mx <- runView $ f x
@@ -239,13 +268,9 @@ instance  (FormInput view,Monad m,Monad (View view m)) => MonadState (View view 
   get = View $  get >>=  return . FormElm mempty . Just 
   put st = View $  put st >>=  return . FormElm mempty . Just 
 
---instance  (Monad m)=> MonadState (MFlowState view) (FlowM view m) where
---  get = FlowM $  get >>= \x ->  return $ FormElm [] $ Just x
---  put st = FlowM $  put st >>= \x ->  return $ FormElm [] $ Just x
-
 
 instance (FormInput view,Monad (View view m),MonadIO m) => MonadIO (View view m) where
-    liftIO io=  static $ let x= liftIO io in x `seq` lift x 
+    liftIO io=   let x= liftIO io in x `seq` lift x 
 
 
 ----- some combinators ----
@@ -575,18 +600,20 @@ getCheckBoxes w= View $ do
      _                   -> Nothing
 
 
---
---whidden :: (Monad m, FormInput v,Read a, Show a, Typeable a) => a -> View v m a
---whidden x= View $ do
---  n <- genNewId
---
---  let showx= case cast x of
---              Just x' -> x'
---              Nothing -> show x
---  r <- getParam1 n 
---  return . FormElm (finput n "hidden" showx False Nothing) $ valToMaybe r
---
---
+
+whidden :: (MonadIO m, FormInput v,Read a, Show a, Typeable a) => a -> View v m a
+whidden x= res where
+ res= View $ do
+      n <- genNewId
+      let showx= case cast x of
+                  Just x' -> x'
+                  Nothing -> show x
+      r <- getParam1 n `asTypeOf` typef res
+      return . FormElm (finput n "hidden" showx False Nothing) $ valToMaybe r
+      where
+      typef :: View v m a -> StateT MFlowState m (ParamResult v a)
+      typef = undefined
+
 
 
 
@@ -757,9 +784,7 @@ wlink x v= View $ do
     mi <- liftIO $ readMVar linkPressed
     if mi==  Just ide
      then return $ FormElm render $ Just x
-     else do
-       liftIO $ print "EMPTY"
-       return $ FormElm render Nothing
+     else return $ FormElm render Nothing
    where
    addEvent be event action= Perch $ \e -> do
      e' <- build be e
@@ -776,6 +801,20 @@ wlink x v= View $ do
 firstOf :: (FormInput view, Monad m, Functor m)=> [View view m a]  -> View view m a
 firstOf xs= Prelude.foldl (<|>) noWidget xs
 
+-- | from a list of widgets, it return the validated ones.
+manyOf :: (FormInput view, MonadIO m, Functor m)=> [View view m a]  -> View view m [a]
+manyOf xs=  (View $ do
+      forms <- mapM runView  xs
+      let vs  = mconcat $ Prelude.map (\(FormElm v _) ->   v) forms
+          res1= catMaybes $ Prelude.map (\(FormElm _ r) -> r) forms
+      return . FormElm vs $ Just res1)
+
+-- | like manyOf, but does not validate if one or more of the widgets does not validate
+allOf xs= manyOf xs `validate` \rs ->
+      if length rs== length xs
+         then return Nothing
+         else return $ Just mempty
+
 -- | Enclose Widgets within some formating.
 -- @view@ is intended to be instantiated to a particular format
 --
@@ -783,20 +822,7 @@ firstOf xs= Prelude.foldl (<|>) noWidget xs
 -- unless the we want to enclose all the widgets in the right side.
 -- Most of the type errors in the DSL are due to the low priority of this operator.
 --
--- This is a widget, which is a table with some links. it returns an Int
---
--- > import MFlow.Forms.Blaze.Html
--- >
--- > tableLinks :: View Html Int
--- > table ! At.style "border:1;width:20%;margin-left:auto;margin-right:auto"
--- >            <<< caption << text "choose an item"
--- >            ++> thead << tr << ( th << b << text  "item" <> th << b << text "times chosen")
--- >            ++> (tbody
--- >                 <<< tr ! rowspan "2" << td << linkHome
--- >                 ++> (tr <<< td <<< wlink  IPhone (b << text "iphone") <++  td << ( b << text (fromString $ show ( cart V.! 0)))
--- >                 <|>  tr <<< td <<< wlink  IPod (b << text "ipad")     <++  td << ( b << text (fromString $ show ( cart V.! 1)))
--- >                 <|>  tr <<< td <<< wlink  IPad (b << text "ipod")     <++  td << ( b << text (fromString $ show ( cart V.! 2))))
--- >                 )
+
 (<<<) :: (Monad m,  Monoid view)
           => (view ->view)
          -> View view m a
@@ -1102,7 +1128,8 @@ wtimeout t w= View $ do
 
 globalState= unsafePerformIO $ newMVar mFlowState0
 
-
+-- run the widget as the content of a DOM element, the id is passed as parameter. All the
+-- content of the element is erased previously
 runWidgetId :: Widget b -> ElemID  -> IO (Maybe b)
 runWidgetId ac id =  do
 
@@ -1111,7 +1138,7 @@ runWidgetId ac id =  do
       runWidget ac e
 
 
-
+-- run the widget as the content of a DOM element
 runWidget :: Widget b -> Elem  -> IO (Maybe b)
 runWidget action e = do
      st <- takeMVar globalState
@@ -1126,6 +1153,24 @@ runWidget action e = do
           st <- get
           liftIO $ putMVar globalState st{fixed= False}
           return $ FormElm mempty Nothing)
+
+-- add a header content
+addHeader :: Perch -> IO ()
+addHeader format= do
+    head <- getHead
+    build format head
+    return ()
+    where
+    getHead :: IO Elem
+    getHead= ffi $ toJSStr "(function(){return document.head;})"
+
+-- | run the widget as the body of the HTML
+runBody w= do
+  body <- getBody
+  (flip runWidget) body w
+  where
+  getBody :: IO Elem
+  getBody= ffi $ toJSStr "(function(){return document.body;})"
 
 data UpdateMethod= Append | Prepend | Insert deriving Show
 
@@ -1158,9 +1203,3 @@ at id method w= View $ do
                              return()
                      
 
-
-elemsByTagName :: ElemID -> IO [Elem]
-elemsByTagName = ffi "(function(s){document.getElementsByTagName(s);})"
-
-evalFormula :: String  -> IO Double
-evalFormula= ffi "(function(exp){ return eval(exp);})"

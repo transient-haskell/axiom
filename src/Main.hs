@@ -2,24 +2,23 @@
 module Main where
 import Haste
 import Haste.DOM(withElem)
+import Haste.Foreign
+import Haste.Prim
 import Haste.Graphics.Canvas
 import Haste.HPlay.View
 import Haste.HPlay.Cell as Cell
-import Haste.Perch
 import Control.Applicative
 import Control.Monad.State
 import Control.Monad
 import Data.Monoid
 import Data.Typeable
-import Prelude hiding (div,all)
+import Prelude hiding (div,all,id)
 import qualified Data.Map as V
 import Data.Maybe
 import Data.List(isInfixOf)
 
 
-
-main=  withElem "idelem" . runWidget $
-    do  -- PerchM monad
+main= runBody $ do  -- PerchM monad
       h1 ! style "text-align:center" $ "hplayground examples"
       h3 $ center $ do
          a ! href "https://github.com/agocorona/hplayground" $ "Git repository"
@@ -169,11 +168,14 @@ drawcanvas=
       let initial= "x*x+x+10;"
           sanitize str= if isInfixOf "alert" str then initial else str
       expr <- inputString (Just initial) `fire` OnKeyUp <++ br <|> return initial
-      wraw $ canvas ! Haste.Perch.id "canvas"  $ noHtml
+      wraw $ canvas ! id "canvas"  $ noHtml
       wraw $ draw $sanitize expr)
 
 
   where
+
+  evalFormula :: String  -> IO Double
+  evalFormula= ffi $ toJSString "(function(exp){ return eval(exp);})"
 
   draw expr= liftIO $ do
     Just can <- getCanvasById "canvas"
@@ -189,7 +191,6 @@ drawcanvas=
   subst c v (c':cs)
     | c==c' =  v++ subst c v cs
     | otherwise= c':subst c v cs
-
 
 
 
@@ -345,12 +346,12 @@ naiveTodo= do
          at "list" Insert $ foldl (<|>) mempty [ display t | t <- (task:tasks)]
          return ()
      <|>
-      wraw (div ! Haste.Perch.id "list" $ noHtml)
+      wraw (div ! id "list" $ noHtml)
 
 
 
  display task=  li <<< (do
-  CheckBoxes ch <- setCheckBox False "check" `fire` OnClick <|> return (CheckBoxes ["nocheck"])
+  ch <- getCheckBoxes $ setCheckBox False "check" `fire` OnClick
   case ch of
         ["check"] -> wraw  $ b ! style "text-decoration:line-through;" $ task
         _         -> wraw  $ b task

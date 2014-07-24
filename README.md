@@ -34,15 +34,13 @@ An online example is here, with some explanations:
 
 http://mflowdemo.herokuapp.com/noscript/wiki/browserwidgets
 
-This is the same example running, inserted as a script:
-
-<div id="idelem"></div>
-<script  src="http://mflowdemo.herokuapp.com/browserwidget.js" type="text/javascript"></script>
-
+Additionally you can see a more complex example: the [hplay-todo](https://github.com/agocorona/hplay-todo),
+ the [todoMVC]/http://todomvc.com) project for hplayground.
 
 The source of the last version of this example is the Main.hs:
 
 https://github.com/agocorona/playground/blob/master/src/Main.hs
+
 How it works
 ============
 Under the hood there is the good old formlet concept. It uses monadic and applicative combinators
@@ -67,7 +65,7 @@ operations with form elements as spreadsheet cells. Currently it is at the begin
 How to run
 ----------
 
-install the ghc compiler
+install the [ghc compiler](http://www.haskell.org/platform/)
 
 install Haste:
 
@@ -82,17 +80,18 @@ clone hplayground
     >git clone http://github.com/agocorona/hplayground
 
 
-install haplayground:
+install hplayground:
 
     >haste-inst install
     
 compile
 
     >cd src
-    >hastec Main.hs
+    >hastec Main.hs --output-html
 
 hastec uses ghc internally so you can expect ordinary ghc error messages in your development.    
-browse the Main.html file. In windows simply execute it in the command line:
+
+Browse the Main.html file. In windows simply execute it in the command line:
 
     >Main.html
     
