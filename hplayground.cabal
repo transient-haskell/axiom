@@ -29,7 +29,7 @@ library
 --executable Main
 --    build-depends: base -any, transformers -any, monads-tf -any,
 --                   containers -any, data-default -any,
---                   haste-lib -any, haste-perch
+--                   haste-compiler -any, haste-perch
 --    main-is: Main.hs
 --    buildable: True
 --    hs-source-dirs: src .

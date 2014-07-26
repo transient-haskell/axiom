@@ -37,6 +37,8 @@ http://mflowdemo.herokuapp.com/noscript/wiki/browserwidgets
 Additionally you can see a more complex example: the [hplay-todo](https://github.com/agocorona/hplay-todo),
  the [todoMVC]/http://todomvc.com) project for hplayground.
 
+the [todo application running](http://mflowdemo.herokuapp.com/todo.html)
+
 The source of the last version of this example is the Main.hs:
 
 https://github.com/agocorona/playground/blob/master/src/Main.hs
