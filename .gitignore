@@ -47,3 +47,5 @@ tramp
 *.key
 _darcs
 darcs*
+*.jsmod
+
