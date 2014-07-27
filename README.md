@@ -18,17 +18,16 @@ This program creates two input boxes and present the sum below them:
         import Control.Applicative
 
 
-        main= do
-          withElem "idelem" $ runWidget action
-          return ()
+        main= runBody action
 
         action :: Widget ()
         action = do
-             r  <- (+) <$> inputInt Nothing `raiseEvent` OnKeyPress <++ br
-                       <*> inputInt Nothing `raiseEvent` OnKeyPress <++ br
+             r  <- (+) <$> inputInt Nothing `wake` OnKeyPress <++ br
+                       <*> inputInt Nothing `wake` OnKeyPress <++ br
              p  (show r) ++> noWidget
 
-This program creates his own rendering, that can be changed dinamically.
+Each widget creates his own rendering and manage his own events, that can be propagated
+or not down trough the monadic computation and trigger modifications in the DOM.
 
 An online example is here, with some explanations:
 
@@ -37,9 +36,9 @@ http://mflowdemo.herokuapp.com/noscript/wiki/browserwidgets
 Additionally you can see a more complex example: the [hplay-todo](https://github.com/agocorona/hplay-todo),
  the [todoMVC]/http://todomvc.com) project for hplayground.
 
-the [todo application running](http://mflowdemo.herokuapp.com/todo.html)
+The [todo application running](http://mflowdemo.herokuapp.com/todo.html)
 
-The source of the last version of this example is the Main.hs:
+The source of the last version of this example is in the file Main.hs:
 
 https://github.com/agocorona/playground/blob/master/src/Main.hs
 
