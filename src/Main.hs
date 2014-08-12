@@ -7,12 +7,13 @@ import Haste.Prim
 import Haste.Graphics.Canvas
 import Haste.HPlay.View
 import Haste.HPlay.Cell as Cell
+import Haste.HPlay.Console
 import Control.Applicative
 import Control.Monad.State
 import Control.Monad
 import Data.Monoid
 import Data.Typeable
-import Prelude hiding (div,all,id)
+import Prelude hiding (div,all,id,print,getChar, putStr, putStrLn,getLine)
 import qualified Data.Map as V
 import Data.Maybe
 import Data.List(isInfixOf)
@@ -44,6 +45,7 @@ main= runBody $ do  -- PerchM monad
                      <<<  (tds <<< drawcanvas
                      <|>   tds <<< gallery
                      <|>   tds <<< mouse )
+
                    ))
 
         <++  b << "bottom of the page"

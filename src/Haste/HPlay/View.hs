@@ -55,8 +55,10 @@ inputSubmit, wlink, noWidget, stop,wraw, isEmpty
 ,module Haste.Perch
 
 -- * low level and internals
+,getNextId,genNewId
 ,getParam
 ,FormInput(..)
+,View(..),FormElm(..)
 
 )  where
 import Control.Applicative
@@ -1165,6 +1167,7 @@ addHeader format= do
     getHead= ffi $ toJSStr "(function(){return document.head;})"
 
 -- | run the widget as the body of the HTML
+runBody :: Widget a -> IO (Maybe a)
 runBody w= do
   body <- getBody
   (flip runWidget) body w
