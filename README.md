@@ -11,10 +11,7 @@ Hplayground is the MFlow widgets running in the browser with the Haste compiler
 This program creates two input boxes and present the sum below them:
 
 
-        import Haste
-        import Haste.DOM(withElem)
-        import View
-        import Builder
+        import Haste.HPlay.View
         import Control.Applicative
 
 

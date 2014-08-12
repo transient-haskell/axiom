@@ -1,16 +1,13 @@
 {-# LANGUAGE  DeriveDataTypeable #-}
 module Main where
 import Haste
-import Haste.DOM(withElem)
 import Haste.Foreign
-import Haste.Prim
 import Haste.Graphics.Canvas
 import Haste.HPlay.View
 import Haste.HPlay.Cell as Cell
-import Haste.HPlay.Console
 import Control.Applicative
-import Control.Monad.State
 import Control.Monad
+import Control.Monad.IO.Class
 import Data.Monoid
 import Data.Typeable
 import Prelude hiding (div,all,id,print,getChar, putStr, putStrLn,getLine)

@@ -1,15 +1,14 @@
 name: hplayground
-version: 0.1.0.1
+version: 0.1.0.2
 cabal-version: >=1.8
 build-type: Simple
 license: BSD3
 license-file: LICENSE
 maintainer: agocorona@gmail.com
 stability: experimental
-bug-reports: https://github.com/agocorona/MFlow/issues
+bug-reports: https://github.com/agocorona/hplayground/issues
 synopsis: a client-side haskell framework that compiles to javascript with the haste compiler
-description: create and compose reactive widgets in the client side using idiomatic haskell.
-             Formlets with reactive effects in the client side
+description: Formlets with reactive effects in the client side
 
 homepage:    https://github.com/agocorona/hplayground
 category: Web
@@ -27,20 +26,20 @@ Flag Haste-inst
 
 
 library
-   if flag(haste-inst)
-    build-depends: base -any, transformers -any,
+--   if flag(haste-inst)
+    build-depends: base >4.0 && <5, transformers -any,
                    containers -any, data-default -any, monads-tf,
                    haste-lib -any, haste-perch -any
-   else
-    build-depends: base -any, transformers -any,
-                   containers -any, data-default -any, monads-tf,
-                   haste-compiler -any, haste-perch -any
+--   else
+--    build-depends: base >4.0 && <5, transformers -any,
+--                   containers -any, data-default -any, monads-tf,
+--                   haste-compiler -any, haste-perch -any
 
     hs-source-dirs: src .
     exposed-modules: Haste.HPlay.View  Haste.HPlay.Cell
 
 --executable Main
---    build-depends: base -any, transformers -any, monads-tf -any,
+--    build-depends: base >4.0 && <5, transformers -any, monads-tf -any,
 --                   containers -any, data-default -any,
 --                   haste-lib -any, haste-perch
 --    main-is: Main.hs
