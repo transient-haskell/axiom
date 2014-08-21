@@ -1,5 +1,5 @@
 name: hplayground
-version: 0.1.0.2
+version: 0.1.0.3
 cabal-version: >=1.8
 build-type: Simple
 license: BSD3
@@ -26,17 +26,19 @@ Flag Haste-inst
 
 
 library
---   if flag(haste-inst)
+   hs-source-dirs: src .
+   exposed-modules: Haste.HPlay.View  Haste.HPlay.Cell
+   if flag(haste-inst)
     build-depends: base >4.0 && <5, transformers -any,
                    containers -any, data-default -any, monads-tf,
                    haste-lib -any, haste-perch -any
---   else
---    build-depends: base >4.0 && <5, transformers -any,
---                   containers -any, data-default -any, monads-tf,
---                   haste-compiler -any, haste-perch -any
+   else
+    build-depends: base >4.0 && <5, transformers -any,
+                   containers -any, data-default -any, monads-tf,
+                   haste-compiler -any, haste-perch -any
 
-    hs-source-dirs: src .
-    exposed-modules: Haste.HPlay.View  Haste.HPlay.Cell
+
+
 
 --executable Main
 --    build-depends: base >4.0 && <5, transformers -any, monads-tf -any,
