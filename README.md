@@ -31,7 +31,7 @@ An online example is here, with some explanations:
 http://mflowdemo.herokuapp.com/noscript/wiki/browserwidgets
 
 Additionally you can see a more complex example: the [hplay-todo](https://github.com/agocorona/hplay-todo),
- the [todoMVC]/http://todomvc.com) project for hplayground.
+ the [todoMVC](http://todomvc.com) project for hplayground.
 
 The [todo application running](http://mflowdemo.herokuapp.com/todo.html)
 
