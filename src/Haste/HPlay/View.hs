@@ -777,26 +777,36 @@ inputSubmit= submitButton
 linkPressed= unsafePerformIO $ newMVar Nothing
 
 wlink :: (Show a, Typeable a) => a -> Perch -> Widget a
-wlink x v= View $ do
-    ide <- genNewId
-    FormElm render _ <- runView $ (wraw $ addEvent(a ! href ("#/"++show1 x)  $ v)
-                                     OnClick (setId ide))
-                        --   `raiseEvent` OnClick
+wlink x v= do
+    (a ! href ("#/"++show1 x)   $ v) `pass` OnClick
+    return x
 
-    mi <- liftIO $ readMVar linkPressed
-    if mi==  Just ide
-     then return $ FormElm render $ Just x
-     else return $ FormElm render Nothing
    where
-   addEvent be event action= Perch $ \e -> do
-     e' <- build be e
-     onEvent e' event  action 
-     return e'
-
-   setId ide _ _= do
-     modifyMVar_ linkPressed . const .  return $ Just ide
    show1 x | typeOf x== typeOf (undefined :: String) = unsafeCoerce x
            | otherwise= show x
+
+
+--wlink x v= View $ do
+--    ide <- genNewId
+--    FormElm render _ <- runView $ (wraw $ addEvent(a ! href ("#/"++show1 x)  $ v)
+--                                          OnClick (setId ide))
+----                           `raiseEvent` OnClick
+--
+--    mi <- liftIO $ readMVar linkPressed
+--    if mi==  Just ide
+--     then return $ FormElm render $ Just x
+--     else return $ FormElm render Nothing
+--   where
+--   addEvent be event action= Perch $ \e -> do
+--     e' <- build be e
+--     onEvent e' event  action 
+--     return e'
+--
+--   setId ide _ _= do
+--     modifyMVar_ linkPressed . const .  return $ Just ide
+--
+--   show1 x | typeOf x== typeOf (undefined :: String) = unsafeCoerce x
+--           | otherwise= show x
 
            
 -- | Concat a list of widgets of the same type, return a the first validated result

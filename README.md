@@ -1,4 +1,4 @@
-Playground
+HPlayground
 ==========
 Create applications in the browser as fast as easy as console applications and have reactive, window-oriented
 and spreadsheet-like behaviours for free.
@@ -19,8 +19,8 @@ This program creates two input boxes and present the sum below them:
 
         action :: Widget ()
         action = do
-             r  <- (+) <$> inputInt Nothing `wake` OnKeyPress <++ br
-                       <*> inputInt Nothing `wake` OnKeyPress <++ br
+             r  <- (+) <$> inputInt Nothing `wake` OnKeyUp <++ br
+                       <*> inputInt Nothing `wake` OnKeyUp <++ br
              p  (show r) ++> noWidget
 
 Each widget creates his own rendering and manage his own events, that can be propagated

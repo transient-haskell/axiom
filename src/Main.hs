@@ -220,7 +220,8 @@ gallery = p "this example show a image gallery. It advances each 20 seconds and 
 
 mouse :: Widget ()
 mouse= do
-    wraw (div  ! style "height:100px;background-color:lightgreen;position:relative" $ h1 "Mouse events here")
+    wraw (div  ! style "height:100px;background-color:lightgreen;position:relative"
+               $ h1 "Mouse events here")
                             `fire` OnMouseOut
                             `fire` OnMouseOver
                             `fire` OnMouseDown
@@ -234,7 +235,7 @@ mouse= do
     evdata  <- getEventData
     wraw $ p << ( (evName evdata) ++" "++ show (evData evdata))
 
-linksample= br ++> wlink "Hey!" (toElem "This link say Hey!")`fire` OnClick >>= \r -> wraw( b (" returns "++ r))
+linksample= br ++> wlink "Hi!" (toElem "This link say Hi!")`fire` OnClick >>= \r -> wraw( b (" returns "++ r))
 
 buttons= p "Different input elements:" ++> checkButton
                                        **> br ++> br

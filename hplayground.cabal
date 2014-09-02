@@ -1,5 +1,5 @@
 name: hplayground
-version: 0.1.0.3
+version: 0.1.0.4
 cabal-version: >=1.8
 build-type: Simple
 license: BSD3
@@ -8,7 +8,7 @@ maintainer: agocorona@gmail.com
 stability: experimental
 bug-reports: https://github.com/agocorona/hplayground/issues
 synopsis: a client-side haskell framework that compiles to javascript with the haste compiler
-description: Formlets with reactive effects in the client side
+description: Formlets with reactive effects in the client side. See homepage
 
 homepage:    https://github.com/agocorona/hplayground
 category: Web
