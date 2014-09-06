@@ -19,25 +19,32 @@ This program creates two input boxes and present the sum below them:
 
         action :: Widget ()
         action = do
-             r  <- (+) <$> inputInt Nothing `wake` OnKeyUp <++ br
-                       <*> inputInt Nothing `wake` OnKeyUp <++ br
+             r  <- (+) <$> inputInt Nothing `wake` OnKeyPress <++ br
+                       <*> inputInt Nothing `wake` OnKeyPress <++ br
              p  (show r) ++> noWidget
 
 Each widget creates his own rendering and manage his own events, that can be propagated
 or not down trough the monadic computation and trigger modifications in the DOM.
 
-An online example is here, with some explanations:
+IDE
+===
 
-http://mflowdemo.herokuapp.com/noscript/wiki/browserwidgets
+There is an IDE for Haste and hplayground it is running At:
+
+http://tryplayg.herokuapp.com
+
+With many examples.
+
+You can install this IDE locally or in an Heroku instance. Follow the instructions at:
+
+https://github.com/agocorona/tryhplay
+
 
 Additionally you can see a more complex example: the [hplay-todo](https://github.com/agocorona/hplay-todo),
  the [todoMVC](http://todomvc.com) project for hplayground.
 
 The [todo application running](http://mflowdemo.herokuapp.com/todo.html)
 
-The source of the last version of this example is in the file Main.hs:
-
-https://github.com/agocorona/playground/blob/master/src/Main.hs
 
 How it works
 ============
