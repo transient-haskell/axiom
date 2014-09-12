@@ -30,20 +30,23 @@ data Cell  a = Cell { mk :: Maybe a -> Widget a
 
 
 boxCell id = Cell{ mk= \mv -> getParam (Just id) "text" mv
-                , setter= \ x -> withElem id $ \e -> setProp e "value" (show1 x)
-                , getter=  withElem id $ \e -> getProp e "value" >>= return . read1}
+                 , setter= \ x -> withElem id $ \e -> setProp e "value" (show1 x)
+                 , getter= get}
      where
      show1 x= if typeOf x== typeOf (undefined :: String)
                                 then unsafeCoerce x
                                 else show x
-     read1 s= if typeOf s== typeOf (undefined :: String)
-                                then unsafeCoerce s
-                                else read s
+
+     get= r where r= withElem id $ \e -> getProp e "value" >>= return . read
+                  read1 s= if typeOf(typeIO r) /= typeOf (undefined :: String)
+                                then read s
+                                else unsafeCoerce s
+                  typeIO :: IO a -> a
+                  typeIO = undefined
 
 (.=) cell x = liftIO $ (setter cell )  x
 
 get cell = liftIO $ getter cell
-
 
 (..=) cell cell'= get cell' >>= (.=) . cell
 
