@@ -37,7 +37,7 @@ boxCell id = Cell{ mk= \mv -> getParam (Just id) "text" mv
                                 then unsafeCoerce x
                                 else show x
 
-     get= r where r= withElem id $ \e -> getProp e "value" >>= return . read
+     get= r where r= withElem id $ \e -> getProp e "value" >>= return . read1
                   read1 s= if typeOf(typeIO r) /= typeOf (undefined :: String)
                                 then read s
                                 else unsafeCoerce s

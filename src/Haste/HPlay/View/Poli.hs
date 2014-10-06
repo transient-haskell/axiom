@@ -8,35 +8,34 @@
 -- Stability   :  experimental
 -- Portability :
 --
--- | The haste-hplayground framework.  <http://github.com/agocorona/hplayground>
+-- |
 --
 -----------------------------------------------------------------------------
 
 {-# LANGUAGE  FlexibleContexts, FlexibleInstances
-    , TypeFamilies, DeriveDataTypeable, UndecidableInstances, ExistentialQuantification
+    , DeriveDataTypeable, UndecidableInstances, ExistentialQuantification
+    , MultiParamTypeClasses
     , GADTs
     #-}
-module Haste.HPlay.View(
+module Haste.HPlay.View.Poli(
 Widget,
--- * re-exported
-module Control.Applicative,
 
 -- * widget combinators and modifiers
 
-static, dynamic, wcallback, (<+>), (**>), (<**), validate
+wcallback, (<+>), (**>), (<**), validate
 ,firstOf, manyOf, allOf
 ,(<<<),(<<),(<++),(++>),(<!)
 
 -- * basic widgets
-,wprint
+
 ,getString,inputString, getInteger,inputInteger,
-getInt, inputInt,inputFloat, inputDouble,getPassword,inputPassword,
+getInt, inputInt,getPassword,inputPassword,
 setRadio,setRadioActive,getRadio
 ,setCheckBox, getCheckBoxes
 ,getTextBox, getMultilineText,textArea,getBool
 ,getSelect,setOption,setSelectedOption, wlabel,
 resetButton,inputReset, submitButton,
-inputSubmit, wbutton, wlink, noWidget, stop,wraw, isEmpty
+inputSubmit, wlink, noWidget, stop,wraw, isEmpty
 
 -- * out of flow updates
 ,at, UpdateMethod(..)
@@ -79,30 +78,79 @@ import Control.Concurrent.MVar
 import qualified Data.Map as M
 import Control.Monad.Trans.Maybe
 import Prelude hiding(id)
-import Haste.Perch
+import Haste.Perch hiding (addEvent)
 
---import Debug.Trace
---(!>)= flip trace
-
+-- | @View v m a@ is a widget (formlet)  with formatting `v`  running the monad `m` (usually `IO`) and which return a value of type `a`
+--
+-- It has 'Applicative', 'Alternative' and 'Monad' instances.
+--
+-- Things to know about these instances:
+--
+--   If the View expression does not validate, ask will present the page again.
+--
+-- /Alternative instance/: Both alternatives are executed. The rest is as usual
+--
+-- /Monad Instance/:
+--
+--  The rendering of each statement is added to the previous. If you want to avoid this, use 'wcallback'
+--
+--  The execution is stopped when the statement has a formlet-widget that does not validate and
+-- return an invalid response (So it will present the page again if no other widget in the expression validates).
+--
+--  The monadic code is executed from the beginning each time the page is presented or refreshed
+--
+--  use 'pageFlow' if your page has more than one monadic computation with dynamic behaviour
+--
+-- use 'pageFlow' to identify each subflow branch of a conditional
+--
+--  For example:
+--
+--  > pageFlow "myid" $ do
+--  >      r <- formlet1
+--  >      liftIO $ ioaction1 r
+--  >      s <- formlet2
+--  >      liftIO $ ioaction2 s
+--  >      case s of
+--  >       True  -> pageFlow "idtrue" $ do ....
+--  >       False -> paeFlow "idfalse" $ do ...
+--  >      ...
+--
+--  Here if  @formlet2@ do not validate, @ioaction2@ is not executed. But if @formLet1@ validates and the
+--  page is refreshed two times (because @formlet2@ has failed, see above),then @ioaction1@ is executed two times.
+--  use 'cachedByKey' if you want to avoid repeated IO executions.
 data NeedForm= HasForm | HasElems  | NoElems deriving Show
 type SData= ()
 
+--instance MonadState (MFlowState m) (  Widget) where
+--  type StateType (  Widget)=  MFlowState
+--
+--instance MonadState (MFlowState m) IO where
+--  type StateType IO=  MFlowState
 
-data EventF= forall b c.EventF (IO (Maybe b)) (b -> IO (Maybe c)) --
+data EventF m= forall b c . EventF (m (Maybe b)) (b -> m (Maybe c)) --
 
-data MFlowState= MFlowState { mfPrefix :: String,mfSequence :: Int
-                            , needForm :: NeedForm, process :: EventF
+data MFlowState m = MFlowState { mfPrefix :: String,mfSequence :: Int
+                            , needForm :: NeedForm, process :: EventF m
                             , fixed :: Bool
                             , mfData :: M.Map TypeRep SData}
 
-type Widget a=  View Perch IO a
+type Widget m a=  View Perch m a
 
-type WState view m = StateT MFlowState m
+type WState m = StateT (MFlowState m) m
 data FormElm view a = FormElm view (Maybe a)
-newtype View v m a = View { runView :: WState v m (FormElm v a)}
+newtype View v m a = View { runView :: WState m (FormElm v a)}
 
+mFlowState0 :: Monad m => MFlowState m
 mFlowState0= MFlowState "" 0 NoElems  (EventF (return Nothing)
                         (const $ return Nothing) ) False M.empty
+
+
+
+
+instance   (Monad m, Monoid view, Monad (View view m))=>MonadState (MFlowState m) (View view m) where
+  get = View $  get >>=  return . FormElm mempty . Just
+  put st = View $  put st >>=  return . FormElm mempty . Just
+
 
 
 instance Functor (FormElm view ) where
@@ -138,27 +186,25 @@ strip st x= View $ do
     put st'
     return $ FormElm mempty mx
 
-setEventCont :: Widget a -> (a -> Widget b)  -> String -> StateT MFlowState IO EventF
+setEventCont :: MonadIO m => Widget m a -> (a -> Widget m b)  -> String -> WState m (EventF m)
 setEventCont x f  id= do
    st <- get
    let conf = process st
    case conf of
      EventF x' f'  -> do
        let addto f f'= \x -> do
-             mr <- runWidgetId (f x ) id
-
+             mr <- runWidgetId (f x) id
              case mr of
                Nothing -> return Nothing
                Just x' ->  f' x'
-           idx= runWidgetId ( strip st  x ) id
-       put st{process= EventF idx (f `addto`  unsafeCoerce f') }
+           idx= runWidgetId ( strip st  x) id
+       put st{process= EventF idx (f `addto` unsafeCoerce f') }
    return conf
 
 resetEventCont cont= modify $ \s -> s {process= cont}
 
-instance Monad (View Perch IO) where
+instance MonadIO m => Monad (View Perch m) where
     x >>= f = View $ do
-           fixed <- gets fixed
            id <- genNewId
            contold <- setEventCont x f  id
            FormElm form1 mk <- runView x
@@ -167,62 +213,30 @@ instance Monad (View Perch IO) where
            case mk of
              Just k  -> do
                 FormElm form2 mk <- runView $ f k
-                case fixed of
-                  False ->  return $ FormElm (form1 <> (span `child`  form2)) mk
-                  True  ->  return $ FormElm (form1 <> form2) mk
+                return $ FormElm (form1 <> (span `child`  form2)) mk
              Nothing ->
-                case fixed of
-                  False -> return $ FormElm  (form1 <> span)  Nothing
-                  True  -> return $ FormElm  form1  Nothing
+                return $ FormElm  (form1 <> span)  Nothing
 
 
     return = View .  return . FormElm  mempty . Just
-    fail msg= View . return $ FormElm (inred $ fromStr msg) Nothing
+--    fail msg= View . return $ FormElm [inRed msg] Nothing
 
--- | To produce upates, each line of html produced by a "do" sequence in the Widget monad is included
--- within a 'span' tag. When the line is reexecuted after a event, the span is updated with the new
--- rendering.
---
--- static tell to the rendering that this widget does not change, so the extra 'span' tag for each
--- line in the sequence and the rewriting is not necessary. Thus the size of the HTML and the
--- performance is improved.
-static w= View $ do
-   st <- get
-   let was = fixed st
-   put st{fixed=True}
-   r <- runView $ w
-   modify $ \st -> st{fixed= was}
-   return r
 
--- override static locally to permit dynamic effects inside a static widget. It is useful
--- when a monadic Widget computation which perform no rendering changes has a to do some update:
---
--- > launchMissiles= static $ do
--- >    t <- armLauncher
--- >    c <- fixTarget t
--- >    f <- fire c
--- >    dynamic $ displayUpdate t c f
--- >    return ()
-
-dynamic w= View $ do
-   st <- get
-   let was = fixed st
-   put st{fixed= False}
-   r <- runView $ w
-   modify $ \st -> st{fixed= was}
-   return r
+--static w= View $ do
+--   modify $ \st -> st{fixed=True}
+--   runView w
 
 instance (FormInput v,Monad (View v m), Monad m, Functor m, Monoid a) => Monoid (View v m a) where
   mappend x y = mappend <$> x <*> y  -- beware that both operands must validate to generate a sum
   mempty= return mempty
 
 
--- | It is a callback in the view monad. The rendering of the second parameter substitutes the rendering
--- of the first paramenter when the latter validates without afecting the rendering of other widgets.
--- This allow the simultaneous execution of different dynamic behaviours in different page locations
--- at the same page.
+-- | It is a callback in the view monad. The callback rendering substitutes the widget rendering
+-- when the latter is validated, without afecting the rendering of other widgets. This allow
+-- the simultaneous execution of different behaviours in different widgets in the
+-- same page.
 wcallback
-  ::  Widget a -> (a ->Widget b) -> Widget b
+  ::  MonadIO m => Widget m a -> (a ->Widget m b) -> Widget m b
 wcallback  x f = View $ do
    idhide <- genNewId
    id <- genNewId
@@ -244,13 +258,22 @@ identified id w= View $ do
      return $ FormElm (span `child` f) mx
 
 
+--wcallback
+--  ::  Widget m a -> (a -> Widget m b) -> Widget m b
+--wcallback  x' f = View $ do
+--   id <- genNewId
+--   let x = identified id x'
+--
+--   contold <- setEventCont x f  id
+--   FormElm form1 mk <- runView x
+--   resetEventCont contold
+--   case mk of
+--     Just k  -> do
+--        FormElm form2 mk <- runView $ f k
+--        return $ FormElm  form2 mk
+--     Nothing ->
+--        return $ FormElm  form1  Nothing
 
-
-
-instance  (FormInput view,Monad m,Monad (View view m)) => MonadState (View view m) where
-  type StateType (View view m)= MFlowState
-  get = View $  get >>=  return . FormElm mempty . Just
-  put st = View $  put st >>=  return . FormElm mempty . Just
 
 
 instance (FormInput view,Monad (View view m),MonadIO m) => MonadIO (View view m) where
@@ -388,8 +411,8 @@ fromValidated (Validated x)= x
 fromValidated NoParam= error $ "fromValidated : NoParam"
 fromValidated (NotValidated s err)= error $ "fromValidated: NotValidated "++ s
 
-getParam1 :: (MonadIO m, MonadState  m, Typeable a, Read a, FormInput v)
-          => String ->  m (ParamResult v a)
+getParam1 :: (MonadIO m,  Typeable a, Read a, FormInput v)
+          => String ->   WState m (ParamResult v a)
 getParam1 par = do
    me <- elemById par
    case me of
@@ -406,8 +429,8 @@ type Params= Attribs
 
 
 
-readParam :: (Monad m, MonadState  m, Typeable a, Read a, FormInput v)
-           => String -> m (ParamResult v a)
+readParam :: (Monad m,  Typeable a, Read a, FormInput v)
+           => String -> WState m (ParamResult v a)
 readParam x1 = r
  where
  r= maybeRead x1
@@ -431,7 +454,7 @@ readParam x1 = r
 validate
   :: (FormInput view,  Monad m,Monad (View view m)) =>
      View view m a
-     -> (a -> WState view m (Maybe view))
+     -> (a -> WState  m (Maybe view))
      -> View view m a
 validate  formt val= do
    mx <- View $ do
@@ -449,7 +472,7 @@ validate  formt val= do
 -- | Generate a new string. Useful for creating tag identifiers and other attributes.
 --
 -- if the page is refreshed, the identifiers generated are the same.
-genNewId :: (StateType m ~ MFlowState, MonadState  m) =>  m String
+genNewId :: Monad m => WState m String -- MonadState (MFlowState m)  m =>  m String
 genNewId=  do
       st <- get
       let n= mfSequence st
@@ -460,7 +483,7 @@ genNewId=  do
 
 
 -- | get the next ideitifier that will be created by genNewId
-getNextId :: (StateType m ~ MFlowState,MonadState  m) =>  m String
+getNextId :: Monad m => WState m String
 getNextId=  do
       st <- get
       let n= mfSequence st
@@ -469,50 +492,42 @@ getNextId=  do
 
 
 -- | Display a text box and return a non empty String
-getString  :: (StateType (View view m) ~ MFlowState,FormInput view,Monad(View view m),MonadIO m) =>
+getString  :: (FormInput view,Monad(View view m),MonadIO m) =>
      Maybe String -> View view m String
 getString ms = getTextBox ms
 --     `validate`
 --     \s -> if Prelude.null s then return (Just $ fromStr "")
 --                    else return Nothing
 
-inputString  :: (StateType (View view m) ~ MFlowState,FormInput view,Monad(View view m),MonadIO m) =>
+inputString  :: (FormInput view,Monad(View view m),MonadIO m) =>
      Maybe String -> View view m String
 inputString= getString
 
 -- | Display a text box and return an Integer (if the value entered is not an Integer, fails the validation)
-getInteger :: (StateType (View view m) ~ MFlowState,FormInput view,  MonadIO m) =>
+getInteger :: (FormInput view,  MonadIO m) =>
      Maybe Integer -> View view m  Integer
 getInteger =  getTextBox
 
-inputInteger :: (StateType (View view m) ~ MFlowState,FormInput view,  MonadIO m) =>
+inputInteger :: (FormInput view,  MonadIO m) =>
      Maybe Integer -> View view m  Integer
 inputInteger= getInteger
 
 -- | Display a text box and return a Int (if the value entered is not an Int, fails the validation)
-getInt :: (StateType (View view m) ~ MFlowState,FormInput view, MonadIO m) =>
+getInt :: (FormInput view, MonadIO m) =>
      Maybe Int -> View view m Int
 getInt =  getTextBox
 
-inputInt :: (StateType (View view m) ~ MFlowState,FormInput view, MonadIO m) =>
+inputInt :: (FormInput view, MonadIO m) =>
      Maybe Int -> View view m Int
 inputInt =  getInt
 
-inputFloat :: (StateType (View view m) ~ MFlowState,FormInput view, MonadIO m) =>
-     Maybe Float -> View view m Float
-inputFloat =  getTextBox
-
-inputDouble :: (StateType (View view m) ~ MFlowState,FormInput view, MonadIO m) =>
-     Maybe Double -> View view m Double
-inputDouble =  getTextBox
-
 -- | Display a password box
-getPassword :: (FormInput view,StateType (View view m) ~ MFlowState,
+getPassword :: (FormInput view,
      MonadIO m) =>
      View view m String
 getPassword = getParam Nothing "password" Nothing
 
-inputPassword :: (StateType (View view m) ~ MFlowState,FormInput view,
+inputPassword :: (FormInput view,
      MonadIO m) =>
      View view m String
 inputPassword= getPassword
@@ -557,16 +572,16 @@ getRadio ws = View $ do
    return $ FormElm render $ fmap (\(Radio r) -> r) mx
 
 
-data CheckBoxes a= CheckBoxes [a]
+data CheckBoxes = CheckBoxes [String]
 
-instance Monoid (CheckBoxes a) where
+instance Monoid CheckBoxes where
   mappend (CheckBoxes xs) (CheckBoxes ys)= CheckBoxes $ xs ++ ys
   mempty= CheckBoxes []
 
 
 -- | Display a text box and return the value entered if it is readable( Otherwise, fail the validation)
-setCheckBox :: (FormInput view,  MonadIO m, Typeable a , Show a) =>
-                Bool -> a -> View view m  (CheckBoxes a)
+setCheckBox :: (FormInput view,  MonadIO m) =>
+                Bool -> String -> View view m  CheckBoxes
 setCheckBox checked' v= View $ do
   n  <- genNewId
   st <- get
@@ -578,15 +593,13 @@ setCheckBox checked' v= View $ do
   let strs= if  checked=="true"  then [v] else []
 --  let mn= if null strs then False else True
       ret= Just $ CheckBoxes  strs
-      showv= case typeOf v== typeOf (undefined ::String) of
-               True -> unsafeCoerce v
-               False -> show v
+
   return $ FormElm
-      ( finput n "checkbox" showv ( checked' ) Nothing)
+      ( finput n "checkbox" v ( checked' ) Nothing)
       ret
 
 
-getCheckBoxes :: (Monad m, FormInput view) =>  View view m  (CheckBoxes a) ->  View view m  [a]
+getCheckBoxes :: (Monad m, FormInput view) =>  View view m  CheckBoxes ->  View view m  [String]
 getCheckBoxes w= View $ do
    FormElm render mcb <- runView w
    return $ FormElm render $ case mcb of
@@ -602,17 +615,17 @@ whidden x= res where
       let showx= case cast x of
                   Just x' -> x'
                   Nothing -> show x
-      r <- getParam1 n `asTypeOf` typef res
+      r <- getParam1 n  `asTypeOf` typef res
       return . FormElm (finput n "hidden" showx False Nothing) $ valToMaybe r
       where
-      typef :: View v m a -> StateT MFlowState m (ParamResult v a)
+      typef :: View v m a -> WState m (ParamResult v a)
       typef = undefined
 
 
 
 
 getTextBox
-  :: (FormInput view, StateType (View view m) ~ MFlowState,
+  :: (FormInput view,
       MonadIO  m,
       Typeable a,
       Show a,
@@ -622,7 +635,7 @@ getTextBox ms  = getParam Nothing "text" ms
 
 
 getParam
-  :: (FormInput view,StateType (View view m) ~ MFlowState,
+  :: (FormInput view,
       MonadIO m,
       Typeable a,
       Show a,
@@ -666,7 +679,7 @@ getMultilineText nvalue = res where
        NotValidated s err -> return $ FormElm (ftextarea tolook   s)  Nothing
        NoParam            -> return $ FormElm (ftextarea tolook  nvalue)  Nothing
     where
-    typef :: View v m String -> StateT MFlowState m (ParamResult v a)
+    typef :: View v m String -> WState m (ParamResult v a)
     typef = undefined
 
 -- | A synonim of getMultilineText
@@ -704,7 +717,7 @@ getSelect opts = res where
     return $ FormElm (fselect tolook  form)  $ valToMaybe r
 
     where
-    typef :: View v m a -> StateT MFlowState m (ParamResult v a)
+    typef :: View v m a -> WState m (ParamResult v a)
     typef = undefined
 
 newtype MFOption a= MFOption a deriving Typeable
@@ -745,14 +758,13 @@ setOption1 nam  val check= View $ do
 
 
 wlabel
-  :: (Monad m, FormInput view) => view -> View view m a -> View view m a
+  :: (MonadIO m, FormInput view) => view -> View view m a -> View view m a
 wlabel str w =View $ do
    id <- getNextId
    FormElm render mx <- runView w
    return $ FormElm (ftag "label" str `attrs` [("for",id)] <> render) mx
 
 
--- passive reset button.
 resetButton :: (FormInput view, Monad m) => String -> View view m ()
 resetButton label= View $ return $ FormElm (finput  "reset" "reset" label False Nothing)
                         $ Just ()
@@ -760,24 +772,17 @@ resetButton label= View $ return $ FormElm (finput  "reset" "reset" label False 
 inputReset :: (FormInput view, Monad m) => String -> View view m ()
 inputReset= resetButton
 
--- passive submit button. Submit a form, but it is not trigger any event.
--- Unless you attach it with `trigger`
-submitButton :: (StateType (View view m) ~ MFlowState,FormInput view, MonadIO m) => String -> View view m String
-submitButton label=  getParam Nothing "submit" $ Just label
+submitButton :: (FormInput view, MonadIO m) => String -> View view m String
+submitButton label= getParam Nothing "submit" $ Just label
 
-
-inputSubmit :: (StateType (View view m) ~ MFlowState,FormInput view, MonadIO m) => String -> View view m String
+inputSubmit :: (FormInput view, MonadIO m) => String -> View view m String
 inputSubmit= submitButton
 
--- | active button. When clicked, return the label value
-wbutton :: a -> String -> Widget a
-wbutton x label= static $ do
-        input  ! atr "type" "submit" ! atr "value" label `pass` OnClick
-        return x
 
--- | Present a link. Return the first parameter when clicked
-wlink :: (Show a, Typeable a) => a -> Perch -> Widget a
-wlink x v= static $ do
+linkPressed= unsafePerformIO $ newMVar Nothing
+
+wlink :: (MonadIO m,Functor m,  Show a, Typeable a) => a -> Perch -> Widget m a
+wlink x v= do
     (a ! href ("#/"++show1 x)   $ v) `pass` OnClick
     return x
 
@@ -786,6 +791,27 @@ wlink x v= static $ do
            | otherwise= show x
 
 
+--wlink x v= View $ do
+--    ide <- genNewId
+--    FormElm render _ <- runView $ (wraw $ addEvent(a ! href ("#/"++show1 x)  $ v)
+--                                          OnClick (setId ide))
+----                           `raiseEvent` OnClick
+--
+--    mi <- liftIO $ readMVar linkPressed
+--    if mi==  Just ide
+--     then return $ FormElm render $ Just x
+--     else return $ FormElm render Nothing
+--   where
+--   addEvent be event action= Perch $ \e -> do
+--     e' <- build be e
+--     onEvent e' event  action
+--     return e'
+--
+--   setId ide _ _= do
+--     modifyMVar_ linkPressed . const .  return $ Just ide
+--
+--   show1 x | typeOf x== typeOf (undefined :: String) = unsafeCoerce x
+--           | otherwise= show x
 
 
 -- | Concat a list of widgets of the same type, return a the first validated result
@@ -793,7 +819,7 @@ firstOf :: (FormInput view, Monad m, Functor m)=> [View view m a]  -> View view 
 firstOf xs= Prelude.foldl (<|>) noWidget xs
 
 -- | from a list of widgets, it return the validated ones.
-manyOf :: (FormInput view, MonadIO m, Functor m)=> [View view m a]  -> View view m [a]
+manyOf :: (FormInput view, Monad m, Functor m)=> [View view m a]  -> View view m [a]
 manyOf xs=  (View $ do
       forms <- mapM runView  xs
       let vs  = mconcat $ Prelude.map (\(FormElm v _) ->   v) forms
@@ -805,10 +831,6 @@ allOf xs= manyOf xs `validate` \rs ->
       if length rs== length xs
          then return Nothing
          else return $ Just mempty
-
--- | show something enclosed in the <pre> tag, so ASCII formatting chars are honored
-wprint :: ToElem a => a -> Widget ()
-wprint= wraw . pre
 
 -- | Enclose Widgets within some formating.
 -- @view@ is intended to be instantiated to a particular format
@@ -878,8 +900,8 @@ widget <! attribs= View $ do
 
 
 
-instance  Attributable (Widget a) where
- (!) widget atrib = View $ do
+instance Monad m =>  Attributable (Widget m a) where
+ (!) widget atrib =View $ do
       FormElm fs  mx <- runView widget
       return $ FormElm  (fs `attr` atrib) mx
 
@@ -910,7 +932,7 @@ wraw :: Monad m => view -> View view m ()
 wraw x= View . return . FormElm x $ Just ()
 
 -- | True if the widget has no valid input
-isEmpty :: Widget a -> Widget Bool
+isEmpty :: Monad m => Widget m a -> Widget m Bool
 isEmpty w= View $ do
   FormElm r mv <- runView w
   return $ FormElm r $ Just $ isNothing mv
@@ -952,7 +974,7 @@ instance   FormInput Perch  where
     flink  v str = ftag "a" mempty `attrs` [("href",  v)] `child` str
 
 -- | Get the session data of the desired type if there is any.
-getSessionData ::  (StateType m ~ MFlowState,MonadState m,Typeable a) =>  m (Maybe a)
+getSessionData ::  (Typeable a, Monad m) => WState m (Maybe a)
 getSessionData =  resp where
  resp= gets mfData >>= \list  ->
     case M.lookup ( typeOf $ typeResp resp ) list of
@@ -964,7 +986,7 @@ getSessionData =  resp where
 -- | getSessionData specialized for the View monad. if Nothing, the monadic computation
 -- does not continue. getSData is a widget that does not validate when there is no data
 --  of that type in the session.
-getSData :: Typeable a =>Widget  a
+getSData :: Monad m => Typeable a =>Widget m  a
 getSData= View $ do
     r <- getSessionData
     return $ FormElm mempty r
@@ -974,13 +996,13 @@ setSessionData  x=
   modify $ \st -> st{mfData= M.insert  (typeOf x ) (unsafeCoerce x) (mfData st)}
 
 -- | a shorter name for setSessionData
-setSData ::  (StateType m ~ MFlowState, MonadState  m,Typeable a) => a -> m ()
+setSData ::  (MonadState (MFlowState m)  m,Typeable a) => a -> m ()
 setSData= setSessionData
 
 delSessionData x=
   modify $ \st -> st{mfData= M.delete (typeOf x ) (mfData st)}
 
-delSData :: (StateType m ~ MFlowState, MonadState  m,Typeable a) => a -> m ()
+delSData :: (MonadState (MFlowState m)  m,Typeable a) => a -> m ()
 delSData= delSessionData
 
 ---------------------------
@@ -1014,15 +1036,16 @@ getEventData= liftIO $ readMVar eventData
 -- monadic computations inside monadic computations are executed following recursively
 -- the steps mentioned above. So an event in a component deep down could or could not
 -- trigger the reexecution of the rest of the whole.
-raiseEvent ::  Widget a -> Event IO b ->Widget a
+raiseEvent ::  MonadIO m => Widget m a -> Event IO b ->Widget m a
 raiseEvent w event = View $ do
  r <- gets process
  case r of
   EventF x f  -> do
    FormElm render mx <- runView  w
-   let proc = (x `addto` f) >> return ()
+   let proc = x `addto` f  >> return ()
    let nevent= evtName event :: String
-   let putevdata dat= modifyMVar_ eventData $ const $ return dat
+   let -- putevdata :: MonadIO m => EventData -> m ()
+       putevdata dat= liftIO $ modifyMVar_ eventData $ const $ return dat
    let render' =  case event of
         OnLoad    -> addEvent (render :: Perch) event $ putevdata (EventData nevent NoData) >> proc
         OnUnload  -> addEvent (render :: Perch) event $ putevdata (EventData nevent NoData) >> proc
@@ -1076,22 +1099,34 @@ raiseEvent w event = View $ do
        Nothing -> return Nothing
        Just x' ->  f' x'
 
+addEvent :: MonadIO m => Perch -> Event IO a -> a -> Perch
+addEvent be event action= Perch $ \e -> do
+     e' <- build be e
+     let atr= evtName event
+     has <- getAttr e'  atr
+     case has of
+       "true" -> return e'
+       _ -> do
+        onEvent e' event  action
+        setAttr e' atr "true"
+        return e'
+
 -- | A shorter synonym for `raiseEvent`
-fire ::  Widget a -> Event IO b ->Widget a
+fire ::  MonadIO m => Widget m a -> Event m b ->Widget m a
 fire = raiseEvent
 
 -- | A shorter and smoother synonym for `raiseEvent`
-wake ::  Widget a -> Event IO b -> Widget a
+wake ::  MonadIO m => Widget m a -> Event m b -> Widget m a
 wake = raiseEvent
 
 -- | A professional synonym for `raiseEvent`
-react :: Widget a -> Event IO b -> Widget a
+react :: MonadIO m => Widget m a -> Event m b -> Widget m a
 react = raiseEvent
 
 -- | pass trough only if the event is fired in this DOM element.
 -- Otherwise, if the code is executing from a previous event, the computation will stop
-pass :: Perch -> Event IO b -> Widget EventData
-pass v event= static $ do
+pass :: (MonadIO m,Functor m) => Perch -> Event m b -> Widget m EventData
+pass v event= do
         resetEventData
         wraw v `wake` event
         e@(EventData typ _) <- getEventData
@@ -1099,12 +1134,12 @@ pass v event= static $ do
 
 -- | return empty and the monadic computation stop if the condition is false.
 -- If true, return the second parameter.
-continueIf :: Bool -> a -> Widget a
+continueIf :: (MonadIO m, Functor m) => Bool -> a -> Widget m a
 continueIf True x  = return x
 continueIf False _ = empty
 
 -- | executes a widget each t milliseconds until it validates and return ()
-wtimeout :: Int -> Widget () -> Widget ()
+wtimeout :: Monad m => Int -> Widget IO () -> Widget m ()
 wtimeout t w= View $ do
     id <- genNewId
     let f= setTimeout t $ do
@@ -1124,57 +1159,56 @@ wtimeout t w= View $ do
 globalState= unsafePerformIO $ newMVar mFlowState0
 
 -- | run the widget as the content of a DOM element, the id is passed as parameter. All the
--- content of the element is erased previously and it is substituted by the new rendering
-runWidgetId :: Widget b -> ElemID  -> IO (Maybe b)
+-- content of the element is erased previously
+runWidgetId :: MonadIO m => Widget m b -> ElemID  -> m (Maybe b)
 runWidgetId ac id =  do
-   me <- elemById id
-   case me of
-     Just e ->  do
+
+   withElem id $  \e -> do
       clearChildren e
       runWidget ac e
-     Nothing -> do
-          st <- takeMVar globalState
-          (FormElm render mx, s) <- runStateT (runView ac) st
-          liftIO $ putMVar globalState s
-          return mx
 
 
 -- | run the widget as the content of a DOM element
--- the new rendering is added to the element
-runWidget :: Widget b -> Elem  -> IO (Maybe b)
+runWidget :: Widget m b -> Elem  -> m (Maybe b)
 runWidget action e = do
-     st <- takeMVar globalState
-     (FormElm render mx, s) <- runStateT (runView action) st
-     liftIO $ putMVar globalState s
-     build render e
+     st <- liftIO $ takeMVar globalState
+     (FormElm render mx, s) <- runStateT (runView action') st
+     case fixed st of
+       False -> liftIO $ build render e
+       True  -> liftIO $ build (this `goParent` render)  e
      return mx
-
+     where
+     action' = action <** -- force the execution of the code below, even if action fails
+        (View $ do
+          st <- get
+          liftIO $ putMVar globalState st{fixed= False}
+          return $ FormElm mempty Nothing)
 
 -- | add a header in the <header> tag
-addHeader :: Perch -> IO ()
+addHeader :: MonadIO m => Perch -> m ()
 addHeader format= do
     head <- getHead
-    build format head
+    liftIO $ build format head
     return ()
     where
-    getHead :: IO Elem
-    getHead= ffi $ toJSStr "(function(){return document.head;})"
+    getHead ::MonadIO m => m Elem
+    getHead= liftIO $ ffi $ toJSStr "(function(){return document.head;})"
 
 -- | run the widget as the body of the HTML
-runBody :: Widget a -> IO (Maybe a)
+runBody :: MonadIO m => Widget m a -> m (Maybe a)
 runBody w= do
-  body <- getBody
+  body <- liftIO $ getBody
   (flip runWidget) body w
-  where
-  getBody :: IO Elem
-  getBody= ffi $ toJSStr "(function(){return document.body;})"
+--  where
+--  getBody :: m Elem
+--  getBody= liftIO $ ffi $ toJSStr "(function(){return document.body;})"
 
 data UpdateMethod= Append | Prepend | Insert deriving Show
 
--- | Run the widget as the content of the element with the given id. The content can
+-- | run the widget as the content of the element with the given id. The content can
 -- be appended, prepended to the previous content or it can be the only content depending on the
 -- update method.
-at :: ElemID -> UpdateMethod -> Widget a -> Widget  a
+at :: Monad m => ElemID -> UpdateMethod -> Widget m a -> Widget m  a
 at id method w= View $ do
  FormElm render mx <- (runView w)
  return $ FormElm  (set  render)  mx
