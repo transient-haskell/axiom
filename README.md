@@ -85,9 +85,14 @@ clone hplayground
     >git clone http://github.com/agocorona/hplayground
 
 
+
 install hplayground:
 
     >haste-inst install
+
+  or install it from Hackage using cabal:
+
+    >haste-inst install hplayground   
     
 compile
 
