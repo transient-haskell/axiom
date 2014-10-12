@@ -144,14 +144,14 @@ setEventCont x f  id= do
    let conf = process st
    case conf of
      EventF x' fs  -> do
---       let f' x = View $ do
---
---           --     modify $ \s -> s{process= EventF (strip s $ f x) (unsafeCoerce fs) } --(unsafeCoerce $ tail fs) }
---                runView $ f x
+       let f' x = View $ do
+
+           --     modify $ \s -> s{process= EventF (strip s $ f x) (unsafeCoerce fs) } --(unsafeCoerce $ tail fs) }
+                runView $ f x
 
 
-       let idx=  strip st x
-       put st{process= EventF idx ((f,id): unsafeCoerce fs)  }
+           idx=  strip st x
+       put st{process= EventF idx ((f',id): unsafeCoerce fs)  }
    return conf
 
 

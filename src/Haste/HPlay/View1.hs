@@ -81,8 +81,8 @@ import Control.Monad.Trans.Maybe
 import Prelude hiding(id)
 import Haste.Perch
 
---import Debug.Trace
---(!>)= flip trace
+import Debug.Trace
+(!>)= flip trace
 
 data NeedForm= HasForm | HasElems  | NoElems deriving Show
 type SData= ()
@@ -144,14 +144,14 @@ setEventCont x f  id= do
    let conf = process st
    case conf of
      EventF x' fs  -> do
---       let f' x = View $ do
---
---           --     modify $ \s -> s{process= EventF (strip s $ f x) (unsafeCoerce fs) } --(unsafeCoerce $ tail fs) }
---                runView $ f x
+       let f' x = View $ do
 
+                modify $ \s -> s{process= EventF (strip s $ f x) (unsafeCoerce fs) } --(unsafeCoerce $ tail fs) }
+                runView $ f x
+                !> "addto"
 
-       let idx=  strip st x
-       put st{process= EventF idx ((f,id): unsafeCoerce fs)  }
+           idx=  strip st x
+       put st{process= EventF idx ((f',id): unsafeCoerce fs)  }
    return conf
 
 
@@ -161,7 +161,7 @@ instance Monad (View Perch IO) where
     x >>= f = View $ do
        fixed <- gets fixed
        id <- genNewId
-       contold <- setEventCont x  f  id
+       contold <- setEventCont (x !> "first") f  id !> "build first"
        FormElm form1 mk <- runView x
        resetEventCont contold
        let span= nelem "span" `attrs` [("id", id)]
@@ -189,8 +189,8 @@ instance Monad (View Perch IO) where
 -- static tell to the rendering that this widget does not change, so the extra 'span' tag for each
 -- line in the sequence and the rewriting is not necessary. Thus the size of the HTML and the
 -- performance is improved.
-
-static w= View $ do
+static w = w
+static1 w= View $ do
    st <- get
    let was = fixed st
    put st{fixed=True}
@@ -227,16 +227,20 @@ instance (FormInput v,Monad (View v m), Monad m, Functor m, Monoid a) => Monoid 
 -- at the same page.
 wcallback
   ::  Widget a -> (a ->Widget b) -> Widget b
-
-wcallback x f= View $ do
-   nid <-  genNewId
-   FormElm form mx <- runView $ do
-             r <-  at nid Insert x
-             at nid Insert $ f r
-
-   return $ FormElm ((Haste.Perch.span ! atr "id" nid $ noHtml) <> form) mx
-
-
+wcallback  x f = View $ do
+   idhide <- genNewId
+   id <- genNewId
+   runView $ identified idhide x >>= delBefore idhide f
+   where
+   delBefore id f = \x -> View $ do
+     FormElm render mx <- runView $ f x
+     return $ FormElm (del id <> render ) mx
+     where
+     del id= Perch $ \e' -> do
+           withElem id $ \e -> do
+             par <- parent e
+             removeChild e par
+           return e'
 
 identified id w= View $ do
      let span= nelem "span" `attr` ("id", id)
@@ -396,6 +400,7 @@ getParam1 par = do
      Nothing -> return  NoParam
      Just e ->  do
        mv <- getValue e
+       liftIO $ print $ "getValue= "++ show mv
        case mv of
          Nothing -> return NoParam
          Just v -> do
@@ -763,7 +768,7 @@ inputReset= resetButton
 -- passive submit button. Submit a form, but it is not trigger any event.
 -- Unless you attach it with `trigger`
 submitButton :: (Monad (View view m),StateType (View view m) ~ MFlowState,FormInput view, MonadIO m) => String -> View view m String
-submitButton label=  getParam Nothing "submit" $ Just label
+submitButton label=  (getParam Nothing "submit" $ Just label) !> ("submitbutton "++ label)
 
 
 inputSubmit :: (Monad (View view m),StateType (View view m) ~ MFlowState,FormInput view, MonadIO m) => String -> View view m String
@@ -808,7 +813,7 @@ allOf xs= manyOf xs `validate` \rs ->
 
 -- | show something enclosed in the <pre> tag, so ASCII formatting chars are honored
 wprint :: ToElem a => a -> Widget ()
-wprint = wraw . pre
+wprint= wraw . pre
 
 -- | Enclose Widgets within some formating.
 -- @view@ is intended to be instantiated to a particular format
@@ -893,8 +898,7 @@ noWidget ::  (FormInput view,
      View view m a
 noWidget= Control.Applicative.empty
 
--- | a sinonym of noWidget that can be used in a monadic expression in the View monad. it stop the
--- computation in the Widget monad.
+-- | a sinonym of noWidget that can be used in a monadic expression in the View monad does not continue
 stop :: (FormInput view,
      Monad m, Functor m) =>
      View view m a
@@ -907,7 +911,7 @@ stop= Control.Applicative.empty
 --wrender x = (fromStr $ show x) ++> return x
 
 -- | Render raw view formatting. It is useful for displaying information.
-wraw ::  Perch -> Widget ()
+wraw :: Monad m => view -> View view m ()
 wraw x= View . return . FormElm x $ Just ()
 
 -- | True if the widget has no valid input
@@ -1017,7 +1021,7 @@ getEventData= liftIO $ readMVar eventData
 -- trigger the reexecution of the rest of the whole.
 raiseEvent ::  Widget a -> Event IO b ->Widget a
 raiseEvent w event = View $ do
- r <- gets process
+ r <- gets process               !> "raise"
  case r of
   EventF x fs -> do
    FormElm render mx <- runView  w
@@ -1042,7 +1046,7 @@ raiseEvent w event = View $ do
         OnMouseOut -> addEvent (render :: Perch) event proc
         OnClick -> addEvent (render :: Perch) event $ \i (x,y) -> do
                          putevdata $  EventData nevent $ Click i (x,y)
-                         proc
+                         proc !> "onclick"
 
         OnDblClick -> addEvent (render :: Perch) event $ \i (x,y) -> do
                          putevdata $ EventData nevent $ Click i (x,y)
@@ -1071,12 +1075,11 @@ raiseEvent w event = View $ do
 
    return $ FormElm render' mx
    where
-   runIt x fs= runBody $ x >>= compose fs
-
+   runIt x fs'@((f,id):fs)= runWidgetId ( x  >>= compose fs') id
       where
 
       compose []= const empty
-      compose ((f,id): fs)= \x -> at id Insert (f x) >>= compose fs
+      compose ((f,_): fs)= \x -> f x >>= compose fs
 
 --   addEvent :: Perch -> Event IO a -> a -> Perch
 --   addEvent be event action= Perch $ \e -> do
@@ -1147,7 +1150,7 @@ runWidgetId ac id =  do
       clearChildren e
       runWidget ac e
      Nothing -> do
-          st <- takeMVar globalState
+          st <- takeMVar globalState !> ("id do not exist: " ++ id)
           (FormElm render mx, s) <- runStateT (runView ac) st
           liftIO $ putMVar globalState s
           return mx
@@ -1158,11 +1161,11 @@ runWidgetId ac id =  do
 runWidget :: Widget b -> Elem  -> IO (Maybe b)
 runWidget action e = do
      st <- takeMVar globalState
+     liftIO $ putStrLn "runWidget"
      (FormElm render mx, s) <- runStateT (runView action) st
      liftIO $ putMVar globalState s
      build render e
      return mx
-
 
 
 -- | add a header in the <header> tag

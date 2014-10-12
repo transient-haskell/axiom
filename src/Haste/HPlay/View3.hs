@@ -102,7 +102,7 @@ data FormElm view a = FormElm view (Maybe a)
 newtype View v m a = View { runView :: WState v m (FormElm v a)}
 
 mFlowState0= MFlowState "" 0 NoElems  (EventF empty
-                        [(const $ empty,"noid") ] ) False M.empty
+                        [(const $ empty,"noid") ] ) True M.empty
 
 
 instance Functor (FormElm view ) where
@@ -144,14 +144,14 @@ setEventCont x f  id= do
    let conf = process st
    case conf of
      EventF x' fs  -> do
---       let f' x = View $ do
---
---           --     modify $ \s -> s{process= EventF (strip s $ f x) (unsafeCoerce fs) } --(unsafeCoerce $ tail fs) }
---                runView $ f x
+       let f' x = View $ do
+
+           --     modify $ \s -> s{process= EventF (strip s $ f x) (unsafeCoerce fs) } --(unsafeCoerce $ tail fs) }
+                runView $ f x
 
 
-       let idx=  strip st x
-       put st{process= EventF idx ((f,id): unsafeCoerce fs)  }
+           idx=  strip st x
+       put st{process= EventF idx ((f',id): unsafeCoerce fs)  }
    return conf
 
 
@@ -160,6 +160,7 @@ resetEventCont cont= modify $ \s -> s {process= cont}
 instance Monad (View Perch IO) where
     x >>= f = View $ do
        fixed <- gets fixed
+       modify (\st -> st{fixed= True})
        id <- genNewId
        contold <- setEventCont x  f  id
        FormElm form1 mk <- runView x
@@ -1068,7 +1069,7 @@ raiseEvent w event = View $ do
                          putevdata $ EventData nevent $ Key i
                          proc
 
-
+   modify $ \s -> s{fixed= False}
    return $ FormElm render' mx
    where
    runIt x fs= runBody $ x >>= compose fs
