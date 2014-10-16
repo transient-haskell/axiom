@@ -78,7 +78,7 @@ import System.IO.Unsafe
 import Control.Concurrent.MVar
 import qualified Data.Map as M
 import Control.Monad.Trans.Maybe
-import Prelude hiding(id)
+import Prelude hiding(id,span)
 import Haste.Perch
 
 --import Debug.Trace
@@ -144,12 +144,6 @@ setEventCont x f  id= do
    let conf = process st
    case conf of
      EventF x' fs  -> do
---       let f' x = View $ do
---
---           --     modify $ \s -> s{process= EventF (strip s $ f x) (unsafeCoerce fs) } --(unsafeCoerce $ tail fs) }
---                runView $ f x
-
-
        let idx=  strip st x
        put st{process= EventF idx ((f,id): unsafeCoerce fs)  }
    return conf
@@ -429,22 +423,25 @@ readParam x1 = r
 --
 -- @getOdd= getInt Nothing `validate` (\x -> return $ if mod x 2==0 then  Nothing else Just "only odd numbers, please")@
 validate
-  :: (FormInput view,  Monad m,Monad (View view m)) =>
-     View view m a
-     -> (a -> WState view m (Maybe view))
-     -> View view m a
-validate  formt val= do
-   mx <- View $ do
-         FormElm form mx <- runView  formt
-         return $ FormElm form (Just mx)
+  :: Widget a
+     -> (a -> WState Perch IO (Maybe Perch))
+     -> Widget a
+validate  w val= static $ do
+   idn <- genNewId
+   wraw $ span ! id idn $ noHtml
+   x <-  w
    View $ do
-     case mx of
-        Just x -> do
           me <- val x
           case me of
-             Just str -> return $ FormElm (inred  str) Nothing
-             Nothing  -> return $ FormElm mempty mx
-        _ -> return $ FormElm mempty Nothing
+             Just str -> do
+                  liftIO $ withElem idn $ build $ clear >> inred  str
+                  return $ FormElm mempty Nothing
+             Nothing  -> do
+                  liftIO $ withElem idn $ build $ clear
+                  return $ FormElm mempty $ Just x
+
+
+
 
 -- | Generate a new string. Useful for creating tag identifiers and other attributes.
 --
@@ -1021,7 +1018,7 @@ raiseEvent w event = View $ do
  case r of
   EventF x fs -> do
    FormElm render mx <- runView  w
-   let proc = runIt x (unsafeCoerce fs)  >> return () -- runWidgetId (x >>= f)id >> return ()
+   let proc = runIt x (unsafeCoerce fs)  >> return ()
    let nevent= evtName event :: String
    let putevdata dat= modifyMVar_ eventData $ const $ return dat
    let render' =  case event of
