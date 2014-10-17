@@ -12,7 +12,7 @@
 --
 -----------------------------------------------------------------------------
 
-{-# LANGUAGE  FlexibleContexts, FlexibleInstances
+{-# LANGUAGE  FlexibleContexts, FlexibleInstances, ForeignFunctionInterface, CPP
     , TypeFamilies, DeriveDataTypeable, UndecidableInstances, ExistentialQuantification
     , GADTs
     #-}
@@ -56,6 +56,9 @@ inputSubmit, wbutton, wlink, noWidget, stop,wraw, isEmpty
 -- * Perch is reexported
 ,module Haste.Perch
 
+-- * communications
+,ajax,Method(..)
+
 -- * low level and internals
 ,getNextId,genNewId
 ,getParam
@@ -72,15 +75,16 @@ import Unsafe.Coerce
 import Data.Maybe
 import Haste
 import Haste.Prim
-import Haste.Foreign(ffi)
+import Haste.Foreign
 import Unsafe.Coerce
 import System.IO.Unsafe
 import Control.Concurrent.MVar
+import Data.IORef
 import qualified Data.Map as M
 import Control.Monad.Trans.Maybe
 import Prelude hiding(id,span)
 import Haste.Perch
-
+import Haste.Ajax
 --import Debug.Trace
 --(!>)= flip trace
 
@@ -897,11 +901,6 @@ stop :: (FormInput view,
      View view m a
 stop= Control.Applicative.empty
 
--- | Render a Show-able  value and return it
---wrender
---  :: (Monad m, Functor m, Show a,Monad (View view m), FormInput view) =>
---     a -> View view m a
---wrender x = (fromStr $ show x) ++> return x
 
 -- | Render raw view formatting. It is useful for displaying information.
 wraw ::  Perch -> Widget ()
@@ -1213,4 +1212,70 @@ at id method w= View $ do
                              build render span
                              return()
 
+-- ajax
 
+responseAjax :: IORef [(String,Maybe String)]
+responseAjax = unsafePerformIO $ newIORef []
+
+
+ajax :: Method -> URL -> [(Key, Val)] -> Widget (Maybe String)
+ajax method url kv= View $ do
+  id <- genNewId
+  rs <- liftIO $ readIORef responseAjax
+  case lookup id rs of
+    Just rec -> liftIO $ do
+           writeIORef responseAjax $ filter ((/= id). fst) rs
+           print "JUST REC"
+           return $ FormElm  mempty $ Just rec
+    _ -> do
+          r <- gets process
+          case r of
+            EventF x fs -> do
+               liftIO $ textRequest'  method url kv $ cb id x fs
+               return $ FormElm mempty Nothing
+  where
+
+  cb id x fs rec= do
+    responses <- readIORef responseAjax
+    liftIO $ writeIORef responseAjax $  (id,rec):responses
+    runIt x (unsafeCoerce fs)  >> return ()
+
+  runIt x fs= runBody $ x >>= compose fs
+  compose []= const empty
+  compose ((f,id): fs)= \x -> at id Insert (f x) >>= compose fs
+
+-- Haste.Ajax  4.3 has a bad definition for POST requests
+
+textRequest' :: Method
+        -> URL
+        -> [(Key, Val)]
+        -> (Maybe String -> IO ())
+        -> IO ()
+textRequest' m url kv cb = do
+        _ <- ajaxReq (toJSStr $ show m) url' True pd cb'     -- here postdata is ""
+        return ()
+        where
+            cb' = mkCallback $ cb . fmap fromJSStr
+            url' = case m of
+               GET -> if null kv then toJSStr url else catJSStr (toJSStr "?") [toJSStr url, toQueryString kv]
+               POST -> toJSStr url
+            pd = case m of
+               GET -> toJSStr ""
+               POST -> if null kv then toJSString "" else toQueryString kv
+
+
+
+
+toQueryString :: [(String, String)] -> JSString
+toQueryString = catJSStr (toJSString "&") . Prelude.map (\(k,v) -> catJSStr (toJSString "=") [toJSString k,toJSString v])
+
+#ifdef __HASTE__
+foreign import ccall ajaxReq :: JSString    -- method
+                             -> JSString    -- url
+                             -> Bool        -- async?
+                             -> JSString    -- POST data
+                             -> JSFun (Maybe JSString -> IO ())
+                             -> IO ()
+#else
+ajaxReq= undefined
+#endif

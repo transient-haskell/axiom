@@ -90,7 +90,7 @@ infixr 0 .=  -- , ..=
 --  fromInteger i= Cell  undefined undefined  . return $ Just $ fromInteger i
 
 
--- *  spradsheet type cells
+-- *  sSpradsheet type cells
 
 -- The recursive Cell calculation DSL BELOW ------
 
@@ -99,6 +99,7 @@ infixr 0 .=  -- , ..=
 loeb :: M.Map String (Expr a) -> M.Map String a
 loeb x = fmap (\a -> a (loeb  x)) x
 
+-- | get a cell for the spreadsheet expression
 gcell ::  Num a => String -> M.Map String a -> a
 gcell n= \vars -> case M.lookup n vars of
     Just exp -> inc n  exp
