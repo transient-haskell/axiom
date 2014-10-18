@@ -127,25 +127,16 @@ rexprs= unsafePerformIO $ newIORef M.empty
 rmodified :: IORef (M.Map String (Expr Float))
 rmodified= unsafePerformIO $ newIORef M.empty
 
-mkscell :: String -> Maybe Float -> Expr Float -> Widget ()
-mkscell name val expr=  static $ do
-   liftIO $ do
-     exprs <- readIORef rexprs
-     writeIORef rexprs $ M.insert name expr exprs
-   r <- mk (boxCell name) val  `fire` OnChange
-   liftIO $ do
-        mod <- readIORef rmodified
-        writeIORef rmodified  $ M.insert  name (const r)  mod
- `continuePerch`  name
 
--- mkscell name val expr= mk (scell name expr) val
+
+mkscell name val expr= mk (scell name expr) val
 
 scell id  expr= Cell{ mk= \mv-> static $ do
                            liftIO $ do
                              exprs <- readIORef rexprs
                              writeIORef rexprs $ M.insert id expr exprs
 
-                           r <- getParam (Just id) "text" mv
+                           r <- getParam (Just id) "text" mv `fire` OnChange
                            liftIO $ do
                                 mod <- readIORef rmodified
                                 writeIORef rmodified  $ M.insert  id (const r)  mod

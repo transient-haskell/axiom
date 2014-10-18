@@ -71,13 +71,11 @@ import Data.Monoid
 import Control.Monad.State
 import Control.Monad.IO.Class
 import Data.Typeable
-import Data.Dynamic  -- for ajax
 import Unsafe.Coerce
 import Data.Maybe
 import Haste
 import Haste.Prim
 import Haste.Foreign
-import Haste.JSON hiding ((!))
 import Unsafe.Coerce
 import System.IO.Unsafe
 import Control.Concurrent.MVar
@@ -87,7 +85,6 @@ import Control.Monad.Trans.Maybe
 import Prelude hiding(id,span)
 import Haste.Perch
 import Haste.Ajax
-
 --import Debug.Trace
 --(!>)= flip trace
 
@@ -1217,36 +1214,31 @@ at id method w= View $ do
 
 -- ajax
 
-responseAjax :: IORef [(String,Maybe Dynamic)]
+responseAjax :: IORef [(String,Maybe String)]
 responseAjax = unsafePerformIO $ newIORef []
 
 
-ajax :: (ToJSString a, ToJSString b, ToJSString c,Typeable c)
-     => Method -> URL -> [(a, b)] -> Widget (Maybe c)
-ajax method url kv= res
+ajax :: Method -> URL -> [(Key, Val)] -> Widget (Maybe String)
+ajax method url kv= View $ do
+  id <- genNewId
+  rs <- liftIO $ readIORef responseAjax
+  case lookup id rs of
+    Just rec -> liftIO $ do
+           writeIORef responseAjax $ filter ((/= id). fst) rs
+           print "JUST REC"
+           return $ FormElm  mempty $ Just rec
+    _ -> do
+          r <- gets process
+          case r of
+            EventF x fs -> do
+               liftIO $ textRequest'  method url kv $ cb id x fs
+               return $ FormElm mempty Nothing
   where
-  res= View $ do
-      id <- genNewId
-      rs <- liftIO $ readIORef responseAjax
-      case lookup id rs of
-        Just rec -> liftIO $ do
-               writeIORef responseAjax $ filter ((/= id). fst) rs
 
-               return $ FormElm  mempty $  fmap fromDynamic rec
-        _ -> do
-              proc <- gets process
-              liftIO $ textRequest'  method url kv $ cb id proc
-              return $ FormElm mempty Nothing
-
-  typeRes :: Widget (Maybe c) -> Maybe c
-  typeRes = undefined
-
-  -- cb :: String -> (Widget a) -> [(b -> Widget c,ElemID)] -> Maybe d -> IO()
-  cb id (EventF x fs) rec= do
+  cb id x fs rec= do
     responses <- readIORef responseAjax
-    liftIO $ writeIORef responseAjax $  (id,fmap toDyn (rec `asTypeOf` typeRes res )):responses
-    runIt x (unsafeCoerce fs)
-    return ()
+    liftIO $ writeIORef responseAjax $  (id,rec):responses
+    runIt x (unsafeCoerce fs)  >> return ()
 
   runIt x fs= runBody $ x >>= compose fs
   compose []= const empty
@@ -1254,53 +1246,28 @@ ajax method url kv= res
 
 -- Haste.Ajax  4.3 has a bad definition for POST requests
 
-class ToJSString a where
-  toJSS :: a -> JSString
-  fromJSS :: JSString -> Maybe  a
-
-instance ToJSString JSString where
-  toJSS x= x
-  fromJSS x= Just x
-
-instance ToJSString String where
-  toJSS= toJSStr
-  fromJSS= Just . fromJSStr
-
-instance ToJSString     JSON where
-  toJSS= encodeJSON
-  fromJSS x= case decodeJSON x of
-             Right x -> Just x
-             Left _ -> Nothing
-
-
-
---instance (Read a, Show a) => ToJSString a where
---  toJSS= toJSStr . show
---  fromJSS= read . fromJSStr
-
-textRequest' :: (ToJSString a, ToJSString b, ToJSString c)
-        => Method
+textRequest' :: Method
         -> URL
-        -> [(a, b)]
-        -> (Maybe c -> IO ())
+        -> [(Key, Val)]
+        -> (Maybe String -> IO ())
         -> IO ()
 textRequest' m url kv cb = do
-        _ <- ajaxReq (toJSS $ show m) url' True pd cb'     -- here postdata is ""
+        _ <- ajaxReq (toJSStr $ show m) url' True pd cb'     -- here postdata is ""
         return ()
         where
-        cb' = mkCallback $ cb . fmap fromJSS'
-        url' = case m of
-               GET -> if null kv then toJSS url else catJSStr (toJSS "?") [toJSS url, toQueryString kv]
-               POST -> toJSS url
-        pd = case m of
-               GET ->  toJSS ""
-               POST -> if null kv then  toJSS "" else toQueryString kv
-
-        fromJSS'= fromJust . fromJSS
+            cb' = mkCallback $ cb . fmap fromJSStr
+            url' = case m of
+               GET -> if null kv then toJSStr url else catJSStr (toJSStr "?") [toJSStr url, toQueryString kv]
+               POST -> toJSStr url
+            pd = case m of
+               GET -> toJSStr ""
+               POST -> if null kv then toJSString "" else toQueryString kv
 
 
-toQueryString :: (ToJSString a, ToJSString b) =>[(a, b)] -> JSString
-toQueryString = catJSStr (toJSString "&") . Prelude.map (\(k,v) -> catJSStr (toJSS "=") [toJSS k,toJSS v])
+
+
+toQueryString :: [(String, String)] -> JSString
+toQueryString = catJSStr (toJSString "&") . Prelude.map (\(k,v) -> catJSStr (toJSString "=") [toJSString k,toJSString v])
 
 #ifdef __HASTE__
 foreign import ccall ajaxReq :: JSString    -- method
