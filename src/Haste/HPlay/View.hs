@@ -23,9 +23,10 @@ module Control.Applicative,
 
 -- * widget combinators and modifiers
 
-static, dynamic, wcallback, (<+>), (**>), (<**), validate
+(<+>), (**>), (<**), validate
 ,firstOf, manyOf, allOf
 ,(<<<),(<<),(<++),(++>),(<!)
+,wcallback
 
 -- * basic widgets
 ,wprint
@@ -51,7 +52,7 @@ inputSubmit, wbutton, wlink, noWidget, stop,wraw, isEmpty
 ,continueIf, wtimeout, Event(..)
 
 -- * running it
-,runWidget,runWidgetId, runBody, addHeader
+,runWidget,runWidgetId, runBody, addHeader,static , dynamic
 
 -- * Perch is reexported
 ,module Haste.Perch
@@ -61,9 +62,9 @@ inputSubmit, wbutton, wlink, noWidget, stop,wraw, isEmpty
 
 -- * low level and internals
 ,getNextId,genNewId
-,getParam
+,getParam, getCont,runCont
 ,FormInput(..)
-,View(..),FormElm(..)
+,View(..),FormElm(..),EventF(..), MFlowState(..)
 
 )  where
 import Control.Applicative
@@ -71,7 +72,7 @@ import Data.Monoid
 import Control.Monad.State
 import Control.Monad.IO.Class
 import Data.Typeable
-import Data.Dynamic  -- for ajax
+
 import Unsafe.Coerce
 import Data.Maybe
 import Haste
@@ -160,24 +161,21 @@ resetEventCont cont= modify $ \s -> s {process= cont}
 
 instance Monad (View Perch IO) where
     x >>= f = View $ do
-       fixed <- gets fixed
-       id <- genNewId
-       contold <- setEventCont x  f  id
+       fix <- gets fixed
+       id1 <- genNewId
+       contold <- setEventCont x  f  id1
        FormElm form1 mk <- runView x
        resetEventCont contold
-       let span= nelem "span" `attrs` [("id", id)]
        case mk of
          Just k  -> do
-     --       contold <- setEventCont (f k !> "secondev") (return)    id  !> "build second"
             FormElm form2 mk <- runView $ f k
-     --       resetEventCont contold
-            case fixed of
-              False ->  return $ FormElm (form1 <> (span `child`  form2)) mk
-              True  ->  return $ FormElm (form1 <> form2) mk
+            return $ FormElm (form1 <> maybeSpan fix id1 form2) mk
          Nothing ->
-            case fixed of
-              False -> return $ FormElm  (form1 <> span)  Nothing
-              True  -> return $ FormElm  form1  Nothing
+            return $ FormElm  (form1 <> maybeSpan fix id1 noHtml)  Nothing
+       where
+       maybeSpan True id1 form2= form2
+       maybeSpan False id1 form2= span ! id id1 $ form2
+
 
 
     return = View .  return . FormElm  mempty . Just
@@ -1016,11 +1014,10 @@ getEventData= liftIO $ readMVar eventData
 -- trigger the reexecution of the rest of the whole.
 raiseEvent ::  Widget a -> Event IO b ->Widget a
 raiseEvent w event = View $ do
- r <- gets process
- case r of
-  EventF x fs -> do
+   cont <- getCont
+
    FormElm render mx <- runView  w
-   let proc = runIt x (unsafeCoerce fs)  >> return ()
+   let proc = runCont cont -- runIt x (unsafeCoerce fs)  >> return ()
    let nevent= evtName event :: String
    let putevdata dat= modifyMVar_ eventData $ const $ return dat
    let render' =  case event of
@@ -1069,10 +1066,16 @@ raiseEvent w event = View $ do
 
 
    return $ FormElm render' mx
-   where
-   runIt x fs= runBody $ x >>= compose fs
 
-      where
+getCont ::(StateType m ~ MFlowState, MonadState  m) => m EventF
+getCont = gets process
+
+runCont :: EventF -> IO ()
+runCont (EventF x fs)= do runIt x (unsafeCoerce fs); return ()
+   where
+      runIt x fs= runBody $ x >>= compose fs
+
+
 
       compose []= const empty
       compose ((f,id): fs)= \x -> at id Insert (f x) >>= compose fs
@@ -1217,90 +1220,70 @@ at id method w= View $ do
 
 -- ajax
 
-responseAjax :: IORef [(String,Maybe Dynamic)]
+responseAjax :: IORef [(String,Maybe JSString)]
 responseAjax = unsafePerformIO $ newIORef []
 
-
-ajax :: (ToJSString a, ToJSString b, ToJSString c,Typeable c)
+-- | Invoke AJAX. `ToJSString` is a class coverter to-from JavaScript strings
+-- `(a,b)` are the lists of parameters, a is normally `String` or `JSString`.
+-- JSON is also supported for `b` and `c`. If you want to handle your data types, make a instance of
+-- `JSType`
+--
+-- Note the de-inversion of control. There is no callback.
+--
+-- `ajax` can be combined with other Widgets using monadic, applicative or alternative combinators.
+ajax :: (JSType  a, JSType  b, JSType  c,Typeable c)
      => Method -> URL -> [(a, b)] -> Widget (Maybe c)
-ajax method url kv= res
-  where
-  res= View $ do
+ajax method url kv= View $ do
       id <- genNewId
       rs <- liftIO $ readIORef responseAjax
       case lookup id rs of
         Just rec -> liftIO $ do
                writeIORef responseAjax $ filter ((/= id). fst) rs
 
-               return $ FormElm  mempty $  fmap fromDynamic rec
+               return $ FormElm  mempty $  fmap fromJSString rec
         _ -> do
               proc <- gets process
               liftIO $ textRequest'  method url kv $ cb id proc
               return $ FormElm mempty Nothing
 
-  typeRes :: Widget (Maybe c) -> Maybe c
-  typeRes = undefined
 
+  where
   -- cb :: String -> (Widget a) -> [(b -> Widget c,ElemID)] -> Maybe d -> IO()
-  cb id (EventF x fs) rec= do
+  cb id cont rec= do
     responses <- readIORef responseAjax
-    liftIO $ writeIORef responseAjax $  (id,fmap toDyn (rec `asTypeOf` typeRes res )):responses
-    runIt x (unsafeCoerce fs)
+    liftIO $ writeIORef responseAjax $  (id, rec):responses
+    runCont cont -- runIt x (unsafeCoerce fs)
     return ()
 
-  runIt x fs= runBody $ x >>= compose fs
-  compose []= const empty
-  compose ((f,id): fs)= \x -> at id Insert (f x) >>= compose fs
-
--- Haste.Ajax  4.3 has a bad definition for POST requests
-
-class ToJSString a where
-  toJSS :: a -> JSString
-  fromJSS :: JSString -> Maybe  a
-
-instance ToJSString JSString where
-  toJSS x= x
-  fromJSS x= Just x
-
-instance ToJSString String where
-  toJSS= toJSStr
-  fromJSS= Just . fromJSStr
-
-instance ToJSString     JSON where
-  toJSS= encodeJSON
-  fromJSS x= case decodeJSON x of
-             Right x -> Just x
-             Left _ -> Nothing
+instance JSType JSString where
+  toJSString x= x
+  fromJSString x= Just x
 
 
 
---instance (Read a, Show a) => ToJSString a where
---  toJSS= toJSStr . show
---  fromJSS= read . fromJSStr
-
-textRequest' :: (ToJSString a, ToJSString b, ToJSString c)
+textRequest' :: (JSType a, JSType b, JSType c)
         => Method
         -> URL
         -> [(a, b)]
         -> (Maybe c -> IO ())
         -> IO ()
 textRequest' m url kv cb = do
-        _ <- ajaxReq (toJSS $ show m) url' True pd cb'     -- here postdata is ""
+        _ <- ajaxReq (toJSString $ show m) url' True pd cb'     -- here postdata is ""
         return ()
         where
         cb' = mkCallback $ cb . fmap fromJSS'
         url' = case m of
-               GET -> if null kv then toJSS url else catJSStr (toJSS "?") [toJSS url, toQueryString kv]
-               POST -> toJSS url
+               GET -> if null kv then toJSString url else catJSStr (toJSString "?") [toJSString url, toQueryString kv]
+               POST -> toJSString url
         pd = case m of
-               GET ->  toJSS ""
-               POST -> if null kv then  toJSS "" else toQueryString kv
+               GET ->  toJSString ""
+               POST -> if null kv then  toJSString "" else toQueryString kv
 
-        fromJSS'= fromJust . fromJSS
+        fromJSS'= fromJust . fromJSString
 
 
-toQueryString :: (ToJSString a, ToJSString b) =>[(a, b)] -> JSString
-toQueryString = catJSStr (toJSString "&") . Prelude.map (\(k,v) -> catJSStr (toJSS "=") [toJSS k,toJSS v])
+toQueryString :: (JSType a, JSType b) =>[(a, b)] -> JSString
+toQueryString = catJSStr (toJSString "&") . Prelude.map (\(k,v) -> catJSStr (toJSString "=") [toJSString k,toJSString v])
 
 #ifdef __HASTE__
 foreign import ccall ajaxReq :: JSString    -- method
@@ -1312,3 +1295,5 @@ foreign import ccall ajaxReq :: JSString    -- method
 #else
 ajaxReq= undefined
 #endif
+
+

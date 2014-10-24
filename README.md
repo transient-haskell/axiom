@@ -26,8 +26,8 @@ This program creates two input boxes and present the sum below them:
 Each widget creates his own rendering and manage his own events, that can be propagated
 or not down trough the monadic computation and trigger modifications in the DOM.
 
-IDE
-===
+IDE and EXAMPLES, EXAMPLES and more EXAMPLES
+============================================
 
 There is an IDE for Haste and hplayground it is running At:
 
@@ -59,7 +59,7 @@ If the event is raised within a widget that does not generate a valid result (re
 the remaining widgets continue unchanged and unevaluated.
 
 Status
-====== 
+======
 
 Non-local modifications of the DOM works with the new "at" primitive.
 Option buttons, checkboxes and drop-down buttons works with the same syntax than MFlow.
@@ -81,7 +81,7 @@ install perch
     >haste-inst install haste-perch
 
 clone hplayground
-  
+
     >git clone http://github.com/agocorona/hplayground
 
 
@@ -92,20 +92,20 @@ install hplayground:
 
   or install it from Hackage using cabal:
 
-    >haste-inst install hplayground   
-    
+    >haste-inst install hplayground
+
 compile
 
     >cd src
     >hastec Main.hs --output-html
 
-hastec uses ghc internally so you can expect ordinary ghc error messages in your development.    
+hastec uses ghc internally so you can expect ordinary ghc error messages in your development.
 
 Browse the Main.html file. In windows simply execute it in the command line:
 
     >Main.html
-    
-you can also see it executing at 
+
+you can also see it executing at
 
      http://mflowdemo.herokuapp.com/noscript/wiki/browserwidgets
 

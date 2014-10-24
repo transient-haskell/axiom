@@ -34,22 +34,23 @@ data Cell  a = Cell { mk :: Maybe a -> Widget a
 --  fmap f cell = cell{setter= \c x ->  c .= f x, getter = \cell -> get cell >>= return . f}
 
 
--- a box cell with polimorphic value, identified by a strig
+-- a box cell with polimorphic value, identified by a string
 boxCell :: (Show a, Read a, Typeable a) => ElemID -> Cell a
 boxCell id = Cell{ mk= \mv -> getParam (Just id) "text" mv
                  , setter= \x -> withElem id $ \e -> setProp e "value" (show1 x)
 
                  , getter= getit}
     where
-    getit= withElem id $ \e -> getProp e "value" >>= return . read1
-    read1 s= if typeOf(typeIO getit) /= typeOf (undefined :: String)
+    getit= withElem id $ \e ->  getProp e "value" >>=  return . read1
+    read1 s= if typeOf(typeIO getit) /= typestring
                then case readsPrec 0 s  of
                    [(v,_)] ->  Just v
                    _  -> Nothing
-               else unsafeCoerce s
+               else Just $ unsafeCoerce s
     typeIO :: IO(Maybe a) -> a
+    typestring= typeOf (undefined :: String)
     typeIO = undefined
-    show1 x= if typeOf x== typeOf (undefined :: String)
+    show1 x= if typeOf x== typestring
             then unsafeCoerce x
             else show x
 
@@ -90,14 +91,12 @@ infixr 0 .=  -- , ..=
 --  fromInteger i= Cell  undefined undefined  . return $ Just $ fromInteger i
 
 
--- *  sSpradsheet type cells
+-- *  Spradsheet type cells
+-- Implement a solver that allows circular dependencies . See
+-- > http://tryplayg.herokuapp.com/try/spreadsheet.hs/edit
 
 -- The recursive Cell calculation DSL BELOW ------
 
--- http://blog.sigfpe.com/2006/11/from-l-theorem-to-spreadsheet.html
--- loeb ::  Functor f => f (t -> a) -> f a
-loeb :: M.Map String (Expr a) -> M.Map String a
-loeb x = fmap (\a -> a (loeb  x)) x
 
 -- | get a cell for the spreadsheet expression
 gcell ::  Num a => String -> M.Map String a -> a
@@ -114,7 +113,7 @@ gcell n= \vars -> case M.lookup n vars of
 
        else  error n
 
-circular n= "loop detected in cell: "++ n  ++ " please fix the error"
+
 
 type Expr a = M.Map String a -> a
 
@@ -136,7 +135,7 @@ scell id  expr= Cell{ mk= \mv-> static $ do
                              exprs <- readIORef rexprs
                              writeIORef rexprs $ M.insert id expr exprs
 
-                           r <- getParam (Just id) "text" mv `fire` OnChange
+                           r <- getParam (Just id) "text" mv `fire` OnKeyUp
                            liftIO $ do
                                 mod <- readIORef rmodified
                                 writeIORef rmodified  $ M.insert  id (const r)  mod
@@ -162,16 +161,17 @@ scell id  expr= Cell{ mk= \mv-> static $ do
             then unsafeCoerce x
             else show x
 
-continuePerch :: Widget a -> ElemID -> Widget a
-continuePerch w eid= View $ do
-  FormElm f mx <- runView w
-  return $ FormElm (c f) mx
-  where
-  c f =Perch $ \e' ->  do
-     build f e'
-     elemid eid
 
-  elemid id= elemById id >>= return . fromJust
+    continuePerch :: Widget a -> ElemID -> Widget a
+    continuePerch w eid= View $ do
+      FormElm f mx <- runView w
+      return $ FormElm (c f) mx
+      where
+      c f =Perch $ \e' ->  do
+         build f e'
+         elemid eid
+
+      elemid id= elemById id >>= return . fromJust
 
 
 calc :: Widget ()
@@ -182,6 +182,11 @@ calc= do
     mapM_ (\(n,v) -> boxCell n .= v)  values
   liftIO $ writeIORef rmodified M.empty
   where
+  -- http://blog.sigfpe.com/2006/11/from-l-theorem-to-spreadsheet.html
+   -- loeb ::  Functor f => f (t -> a) -> f a
+  loeb :: M.Map String (Expr a) -> M.Map String a
+  loeb x = fmap (\a -> a (loeb  x)) x
+
   calc1  :: IO [(String,Float)]
   calc1=do
     writeIORef rtries 0
@@ -193,6 +198,8 @@ calc= do
     toStrict $ M.toList evalues
 
   toStrict xs = print xs >> return xs
+
+  circular n= "loop detected in cell: "++ n  ++ " please fix the error"
 
   doit :: SomeException -> IO [(String,Float)]
   doit e= do

@@ -6,46 +6,40 @@ license: BSD3
 license-file: LICENSE
 maintainer: agocorona@gmail.com
 stability: experimental
+homepage: https://github.com/agocorona/hplayground
 bug-reports: https://github.com/agocorona/hplayground/issues
 synopsis: a client-side haskell framework that compiles to javascript with the haste compiler
 description: Formlets with reactive effects in the client side. See homepage
-
-homepage:    https://github.com/agocorona/hplayground
 category: Web
 author: Alberto Gómez Corona
 data-dir: ""
-extra-source-files: src/Main.hs, src/Main.html
+extra-source-files: src/Main.hs src/Main.html
 
 source-repository head
     type: git
     location: http://github.com/agocorona/hplayground
 
-Flag Haste-inst
-  Description: either if it is being compiled with haste-inst or with cabal
-  Default: False
-
+flag haste-inst
+    Description:  either if it is being compiled with haste-inst or with cabal
+    Default: False
 
 library
-   hs-source-dirs: src .
-   exposed-modules: Haste.HPlay.View  Haste.HPlay.Cell
-   if flag(haste-inst)
-    build-depends: base >4.0 && <5, transformers -any,
-                   containers -any, data-default -any, monads-tf,
-                   haste-lib -any, haste-perch -any
-   else
-    build-depends: base >4.0 && <5, transformers -any,
-                   containers -any, data-default -any, monads-tf,
-                   haste-compiler -any, haste-perch -any
 
+    if flag(haste-inst)
+        build-depends: base >4.0 && <5, transformers -any, containers -any,
+                       data-default -any, monads-tf -any, haste-lib -any, haste-perch -any
+        exposed: True
+        buildable: True
+    else
+        build-depends: base >4.0 && <5, transformers -any, containers -any,
+                       data-default -any, monads-tf -any, haste-compiler -any,
+                       haste-perch -any
+        exposed: True
+        buildable: True
+    exposed-modules: Haste.HPlay.View Haste.HPlay.Cell, Haste.HPlay.WebSockets
+    exposed: True
+    buildable: True
+    hs-source-dirs: src .
 
-
-
---executable Main
---    build-depends: base >4.0 && <5, transformers -any, monads-tf -any,
---                   containers -any, data-default -any,
---                   haste-lib -any, haste-perch
---    main-is: Main.hs
---    buildable: True
---    hs-source-dirs: src .
 
 
