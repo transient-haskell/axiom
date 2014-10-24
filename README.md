@@ -1,5 +1,9 @@
 HPlayground
 ==========
+latest additions:
+    * [ajax](http://tryplayg.herokuapp.com/try/ajax.hs/edit) with de-inversion of control
+    * [WebSockets](http://tryplayg.herokuapp.com/try/hplay-sockets.hs/edit) with de-inversion of control
+    * A [accounting application example](http://tryplayg.herokuapp.com/try/mybudget.hs/edit) that show how to include a javascript library: the google chart library as a widget.
 Create applications in the browser as fast as easy as console applications and have reactive, window-oriented
 and spreadsheet-like behaviours for free.
 
@@ -26,7 +30,7 @@ This program creates two input boxes and present the sum below them:
 Each widget creates his own rendering and manage his own events, that can be propagated
 or not down trough the monadic computation and trigger modifications in the DOM.
 
-IDE and EXAMPLES, EXAMPLES and more EXAMPLES
+IDE with EXAMPLES, EXAMPLES and more EXAMPLES
 ============================================
 
 There is an IDE for Haste and hplayground it is running At:
