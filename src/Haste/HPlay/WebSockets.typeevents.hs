@@ -34,36 +34,13 @@ import Control.Monad.IO.Class
 import Data.List (nubBy)
 
 
-data WebSocket
-instance Pack WebSocket where
-  pack = unsafeCoerce
 
-instance Unpack WebSocket where
-  unpack = unsafeCoerce
-
-newtype WSComputation = WSComputation (WebSocket -> IO ())
-
-instance Pack WSComputation where
-  pack = unsafeCoerce
-
-instance Unpack WSComputation where
-  unpack = unsafeCoerce
-
-newtype WSOnError = WSOnError (IO ())
-instance Pack WSOnError where
-  pack = unsafeCoerce
-instance Unpack WSOnError where
-  unpack = unsafeCoerce
-
-newtype WSOnMsg = WSOnMsg (WebSocket -> JSString -> IO ())
-instance Pack WSOnMsg where
-  pack = unsafeCoerce
-instance Unpack WSOnMsg where
-  unpack = unsafeCoerce
 
 type SockId = String
 
-rsockets :: IORef [(String,(WebSocket,Maybe JSString))]
+type Index= Int
+
+rsockets :: IORef [(String,(WebSocket,Index,[EventF],Maybe JSString))]
 rsockets= unsafePerformIO $ newIORef []
 
 wsClose :: SockId -> Widget ()
@@ -83,8 +60,8 @@ wsClose id= View $ do
         return $ FormElm noHtml Nothing
   where
   closes :: WebSocket -> WSOnError -> IO()
-  closes ws onclose= ffi "(function(ws,onclose){\
-                        \ws.onclose = function(e) {B(A(onclose,[0]));};\
+  closes ws onclose= ffi "(function(ws){\
+                        \ws.onclose = function(ws,onclose) {B(A(onclose,[0]));};\
                         \ws.close()})"
 
 -- | open the socket and continue the flow when it is opened.
@@ -102,20 +79,34 @@ wsOpen url = View $ do
                              writeIORef rsockets $(id, (ws,Nothing)):wss
                              runCont cont
 
-        liftIO $ news url  onopen -- $ WSOnError $ error "WebSocket closed unexpectedly"
+        withWebSockets url  ondata onerror  onopen -- liftIO $ news url  onopen
         return $ FormElm noHtml Nothing
 
-
+ondata resp = do
+    wss <- liftIO $ readIORef rsockets
+    case lookup id wss of
+       Nothing -> error "socket not opened"
+       Just (s,index,handlers,_) -> search  handlers index
     where
-    news :: URL
-         -> WSComputation
-    --     -> WSOnError
-         -> IO ()
-    news= ffi $  "(function(url,f){\
-             \var ws = new WebSocket(url);\
-             \ws.onopen = function(e) {B(A(f,[ws,0]));};\
-             \return ws;\
-           \})"
+    search handlers index = do
+        let get = handlers !! index
+        mr <- handle (const $ return Nothing) get resp
+        case mr of
+          Nothing -> search handlers $ if index == lenght handlers then 0 else index + 1
+          Just r  -> do
+             writeIORef rsockets $ nubBy (\s s' -> fst s== fst s') $ (id, (s,index,handlers, Just r)):wss
+             runCont cont
+
+--    where
+--    news :: URL
+--         -> WSComputation
+--    --     -> WSOnError
+--         -> IO ()
+--    news= ffi $  "(function(url,f){\
+--             \var ws = new WebSocket(url);\
+--             \ws.onopen = function(e) {B(A(f,[ws,0]));};\
+--             \return ws;\
+--           \})"
 
 -- | syncronous request-responses.
 -- wsAsk can also handle asynchronous traffic too since it catches every received

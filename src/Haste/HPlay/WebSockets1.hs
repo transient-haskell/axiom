@@ -83,8 +83,8 @@ wsClose id= View $ do
         return $ FormElm noHtml Nothing
   where
   closes :: WebSocket -> WSOnError -> IO()
-  closes ws onclose= ffi "(function(ws,onclose){\
-                        \ws.onclose = function(e) {B(A(onclose,[0]));};\
+  closes ws onclose= ffi "(function(ws){\
+                        \ws.onclose = function(ws,onclose) {B(A(onclose,[0]));};\
                         \ws.close()})"
 
 -- | open the socket and continue the flow when it is opened.

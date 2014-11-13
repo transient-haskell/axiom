@@ -1067,18 +1067,6 @@ raiseEvent w event = View $ do
 
    return $ FormElm render' mx
 
-getCont ::(StateType m ~ MFlowState, MonadState  m) => m EventF
-getCont = gets process
-
-runCont :: EventF -> IO ()
-runCont (EventF x fs)= do runIt x (unsafeCoerce fs); return ()
-   where
-      runIt x fs= runBody $ x >>= compose fs
-
-
-
-      compose []= const empty
-      compose ((f,id): fs)= \x -> at id Insert (f x) >>= compose fs
 
 --   addEvent :: Perch -> Event IO a -> a -> Perch
 --   addEvent be event action= Perch $ \e -> do
@@ -1136,6 +1124,20 @@ wtimeout t w= View $ do
     liftIO  f
     runView $ identified id w
 
+-- getting and running continuations
+
+getCont ::(StateType m ~ MFlowState, MonadState  m) => m EventF
+getCont = gets process
+
+runCont :: EventF -> IO ()
+runCont (EventF x fs)= do runIt x (unsafeCoerce fs); return ()
+   where
+      runIt x fs= runBody $ x >>= compose fs
+
+
+
+      compose []= const empty
+      compose ((f,id): fs)= \x -> at id Insert (f x) >>= compose fs
 
 globalState= unsafePerformIO $ newMVar mFlowState0
 
@@ -1255,9 +1257,7 @@ ajax method url kv= View $ do
     runCont cont -- runIt x (unsafeCoerce fs)
     return ()
 
-instance JSType JSString where
-  toJSString x= x
-  fromJSString x= Just x
+
 
 
 
