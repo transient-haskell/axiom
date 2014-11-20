@@ -4,7 +4,7 @@ latest additions:
 
 * [A monad for reactive programming part 2](https://www.fpcomplete.com/user/agocorona/monad-reactive-programming-2) describes the monadic reactive mechanism of hplayground
 
-* A [Tutorial for creating client side applications](http://www.airpair.com/haskell/posts/haskell-tutorial-introduction-to-web-apps) usign haste and hplayground
+* A [Tutorial for creating client side applications](http://www.airpair.com/haskell/posts/haskell-tutorial-introduction-to-web-apps) using haste and hplayground
 
 * [ajax](http://tryplayg.herokuapp.com/try/ajax.hs/edit) with de-inversion of control
 
