@@ -2,13 +2,15 @@ HPlayground
 ==========
 latest additions:
 
+* [A monad for reactive programming part 2](https://www.fpcomplete.com/user/agocorona/monad-reactive-programming-2) describes the monadic reactive mechanism of hplayground
+
 * A [Tutorial for creating client side applications](http://www.airpair.com/haskell/posts/haskell-tutorial-introduction-to-web-apps) usign haste and hplayground
 
 * [ajax](http://tryplayg.herokuapp.com/try/ajax.hs/edit) with de-inversion of control
 
 * [WebSockets](http://tryplayg.herokuapp.com/try/hplay-sockets.hs/edit) with de-inversion of control
 
-* A [accounting application example](http://tryplayg.herokuapp.com/try/mybudget.hs/edit) that show how to include a javascript library: the google chart library as a widget.
+* A [accounting application example](http://tryplayg.herokuapp.com/try/mybudget.hs/edit) that show how to include a javascript library -the google chart library- as a widget.
 
 Create applications in the browser as fast as easy as console applications and have reactive, window-oriented
 and spreadsheet-like behaviours for free.
