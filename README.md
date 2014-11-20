@@ -18,7 +18,7 @@ and spreadsheet-like behaviours for free.
 So you translate your inputs and outputs from console calls to playground widgets and with no more modifications
 you have reactive and spreadsheet behaviours.
 
-Hplayground is the MFlow widgets running in the browser with the Haste compiler
+Hplayground uses the same [MFlow](https://github.com/agocorona/MFLow) combinators running in the browser with the Haste compiler
 
 This program creates two input boxes and present the sum below them:
 
