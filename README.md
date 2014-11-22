@@ -2,13 +2,15 @@ HPlayground
 ==========
 latest additions:
 
-* A [Tutorial for creating client side applications](http://www.airpair.com/haskell/posts/haskell-tutorial-introduction-to-web-apps) usign haste and hplayground
+* [A monad for reactive programming part 2](https://www.fpcomplete.com/user/agocorona/monad-reactive-programming-2) describes the monadic reactive mechanism of hplayground
+
+* A [Tutorial for creating client side applications](http://www.airpair.com/haskell/posts/haskell-tutorial-introduction-to-web-apps) using haste and hplayground
 
 * [ajax](http://tryplayg.herokuapp.com/try/ajax.hs/edit) with de-inversion of control
 
 * [WebSockets](http://tryplayg.herokuapp.com/try/hplay-sockets.hs/edit) with de-inversion of control
 
-* A [accounting application example](http://tryplayg.herokuapp.com/try/mybudget.hs/edit) that show how to include a javascript library: the google chart library as a widget.
+* A [accounting application example](http://tryplayg.herokuapp.com/try/mybudget.hs/edit) that show how to include a javascript library -the google chart library- as a widget.
 
 Create applications in the browser as fast as easy as console applications and have reactive, window-oriented
 and spreadsheet-like behaviours for free.
@@ -16,7 +18,7 @@ and spreadsheet-like behaviours for free.
 So you translate your inputs and outputs from console calls to playground widgets and with no more modifications
 you have reactive and spreadsheet behaviours.
 
-Hplayground is the MFlow widgets running in the browser with the Haste compiler
+Hplayground uses the same [MFlow](https://github.com/agocorona/MFLow) combinators running in the browser with the Haste compiler
 
 This program creates two input boxes and present the sum below them:
 
