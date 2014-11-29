@@ -97,7 +97,7 @@ data NeedForm= HasForm | HasElems  | NoElems deriving Show
 type SData= ()
 
 
-data EventF= forall b c.EventF (Widget b) ElemID  (b -> Widget c)
+data EventF= forall b c.EventF (Widget b)  (b -> Widget c)
 
 data MFlowState= MFlowState { mfPrefix :: String
                             , mfSequence :: Int
@@ -113,8 +113,8 @@ type WState view m = StateT MFlowState m
 data FormElm view a = FormElm view (Maybe a)
 newtype View v m a = View { runView :: WState v m (FormElm v a)}
 
-mFlowState0= MFlowState "" 0 NoElems  (EventF empty noid
-                        (const empty) ) True
+mFlowState0= MFlowState "" 0 NoElems  (EventF empty
+                        (const empty) ) False
                         (toDyn $toDyn $ EventData "OnLoad" NoData)
                         M.empty
 
@@ -158,22 +158,34 @@ setEventCont x f  id= do
    st <- get
    let conf = process st
    case conf of
-     EventF _ _ fs  -> do
+     EventF  _ fs  -> do
        let idx=  strip st x
-       put st{process= EventF idx id ( \x -> f x >>=  unsafeCoerce fs)  }
+       put st{process= EventF idx ( \x ->  at id   $  ( f x) `bind` unsafeCoerce fs)  }
    return conf
+   where
+   at id w= View $ do
+      FormElm render mx <- (runView w)
+      return $ FormElm  (set  render)  mx
+      where
+      set render= liftIO $ do
+         me <- elemById id
+         case me of
+          Nothing -> return ()
+          Just e ->  do
+                     clearChildren e
+                     build render e
+                     return ()
 
 
 resetEventCont cont= modify $ \s -> s {process= cont}
 
 instance Monad (View Perch IO) where
     x >>= f = View $ do
+       fix <- gets fixed
        id1 <- genNewId
-       contold <- setEventCont x  f id1
+       contold <- setEventCont x  f  id1
        FormElm form1 mk <- runView x
        resetEventCont contold
-       fix <- gets fixed
-       modify $ \s -> s{fixed=True}
        case mk of
          Just k  -> do
             FormElm form2 mk <- runView $ f k
@@ -181,31 +193,48 @@ instance Monad (View Perch IO) where
          Nothing ->
             return $ FormElm  (form1 <> maybeSpan fix id1 noHtml)  Nothing
        where
-       maybeSpan True id1 form2= form2
-       maybeSpan False id1 form2= span ! id id1 $ form2
+       maybeSpan True id1 form= form
+       maybeSpan False id1 form= span ! id id1 $ form
+
+
 
     return = View .  return . FormElm  mempty . Just
     fail msg= View . return $ FormElm (inred $ fromStr msg) Nothing
 
--- | no longer necessary
-static w= w
---static w= View $ do
---   st <- get
---   let was = fixed st
---   put st{fixed=True}
---   r <- runView $ w
---   modify $ \st -> st{fixed= was}
---   return r
 
--- | no longer necessary
-dynamic w = w
---dynamic w= View $ do
---   st <- get
---   let was = fixed st
---   put st{fixed= False}
---   r <- runView $ w
---   modify $ \st -> st{fixed= was}
---   return r
+-- | To produce updates, each line of html produced by a "do" sequence in the Widget monad is included
+-- within a 'span' tag. When the line is reexecuted after a event, the span is updated with the new
+-- rendering.
+--
+-- static tell to the rendering that this widget does not change, so the extra 'span' tag for each
+-- line in the sequence and the rewriting is not necessary. Thus the size of the HTML and the
+-- performance is improved.
+
+static w= View $ do
+   st <- get
+   let was = fixed st
+   put st{fixed=True}
+   r <- runView $ w
+   modify $ \st -> st{fixed= was}
+   return r
+
+-- override static locally to permit dynamic effects inside a static widget. It is useful
+-- when a monadic Widget computation which perform no rendering changes has a to do some update:
+--
+-- > launchMissiles= static $ do
+-- >    t <- armLauncher
+-- >    c <- fixTarget t
+-- >    f <- fire c
+-- >    dynamic $ displayUpdate t c f
+-- >    return ()
+
+dynamic w= View $ do
+   st <- get
+   let was = fixed st
+   put st{fixed= False}
+   r <- runView $ w
+   modify $ \st -> st{fixed= was}
+   return r
 
 instance (FormInput v,Monad (View v m), Monad m, Functor m, Monoid a) => Monoid (View v m a) where
   mappend x y = mappend <$> x <*> y  -- beware that both operands must validate to generate a sum
@@ -1020,53 +1049,54 @@ instance  IsEvent (Event m a) a   where
    eventName= evtName
    handlerBuild event proc =
      let nevent= eventName event
-
-         runw w=  unsafeCoerce $ runBody w >> return()
+         setDat :: Typeable a => a -> Widget()
+         setDat= static . setEventData
+         runw w=  unsafeCoerce $ runBody  w >> return()
      in case event of
-        OnLoad    -> runw $ setEventData (EventData nevent NoData) >> proc
-        OnUnload  -> runw $ setEventData (EventData nevent NoData) >> proc
-        OnChange  -> runw $ setEventData (EventData nevent NoData) >> proc
-        OnFocus   -> runw $ setEventData (EventData nevent NoData) >> proc
-        OnBlur    -> runw $ setEventData (EventData nevent NoData) >> proc
+        OnLoad    -> runw $ setDat (EventData nevent NoData) >> proc
+        OnUnload  -> runw $ setDat (EventData nevent NoData) >> proc
+        OnChange  -> runw $ setDat (EventData nevent NoData) >> proc
+        OnFocus   -> runw $ setDat (EventData nevent NoData) >> proc
+        OnBlur    -> runw $ setDat (EventData nevent NoData) >> proc
 
         OnMouseMove ->   \(x,y) -> runw $ do
-                          setEventData $ EventData nevent $ Mouse(x,y)
+                          setDat $ EventData nevent $ Mouse(x,y)
                           proc
 
         OnMouseOver ->   \(x,y) -> runw $ do
-                          setEventData $  EventData nevent $ Mouse(x,y)
+                          setDat $  EventData nevent $ Mouse(x,y)
                           proc
 
         OnMouseOut ->    runw $ do
-                           setEventData $  EventData nevent $ MouseOut
+                           setDat $  EventData nevent $ MouseOut
                            proc
 
         OnClick ->       \i (x,y) -> runw $ do
-                          setEventData $  EventData nevent $ Click i (x,y)
+                          setDat $  EventData nevent $ Click i (x,y)
                           proc
 
         OnDblClick ->   \i (x,y) -> runw $ do
-                          setEventData $ EventData nevent $ Click i (x,y)
+                          setDat $ EventData nevent $ Click i (x,y)
                           proc
 
         OnMouseDown ->   \i (x,y) -> runw $ do
-                          setEventData $ EventData nevent $ Click i (x,y)
+                          setDat $ EventData nevent $ Click i (x,y)
                           proc
 
         OnMouseUp ->   \i (x,y) -> runw $ do
-                          setEventData $ EventData nevent $ Click i (x,y)
+                          setDat $ EventData nevent $ Click i (x,y)
                           proc
 
         OnKeyPress ->   \i -> runw $ do
-                          setEventData $ EventData nevent $ Key i
+                          setDat $ EventData nevent $ Key i
                           proc
 
         OnKeyUp  ->   \i -> runw $ do
-                          setEventData $ EventData nevent $ Key i
+                          setDat $ EventData nevent $ Key i
                           proc
 
         OnKeyDown ->   \i -> runw $ do
-                          setEventData $ EventData nevent $ Key i
+                          setDat $ EventData nevent $ Key i
                           proc
 
 
@@ -1093,7 +1123,6 @@ instance  IsEvent (Event m a) a   where
 -- trigger the reexecution of the rest of the whole.
 raiseEvent ::  IsEvent event callback => Widget a -> event -> Widget a
 raiseEvent w event = View $ do
-   modify $ \s -> s{fixed= False}
    cont <- getCont
    FormElm render mx <- runView  w
    let proc = wrunCont cont
@@ -1166,21 +1195,12 @@ getCont = gets process
 runCont :: EventF -> IO ()
 runCont ev= runBody  (wrunCont ev) >> return()
 
-wrunCont :: EventF -> Widget ()
-wrunCont (EventF x id fs)= do
-   runIt x  fs
-   return ()
-   where
-
-
-   runIt x fs= x `bind` (\r -> at id Insert $ (compose fs) r)
+wrunCont :: EventF -> Widget()
+wrunCont (EventF x  fs)= x `bind` fs `bind` const (return ())
       where
-      compose w= w
---      compose []= const empty
---      compose (f: fs)= \x -> f x >>= compose fs
 
-      bind :: Widget a -> (a -> Widget b) -> Widget b
-      bind x f = View $ do
+bind :: Widget a -> (a -> Widget b) -> Widget b
+bind x f = View $ do
        FormElm form1 mk <- runView x
        case mk of
          Just k  -> do
