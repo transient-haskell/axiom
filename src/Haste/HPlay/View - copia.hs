@@ -14,7 +14,7 @@
 
 {-# LANGUAGE  FlexibleContexts, FlexibleInstances, ForeignFunctionInterface, CPP
     , TypeFamilies, DeriveDataTypeable, UndecidableInstances, ExistentialQuantification
-    , GADTs
+    , GADTs, MultiParamTypeClasses, FunctionalDependencies
     #-}
 module Haste.HPlay.View(
 Widget,
@@ -23,9 +23,10 @@ module Control.Applicative,
 
 -- * widget combinators and modifiers
 
-static, dynamic, wcallback, (<+>), (**>), (<**), validate
+(<+>), (**>), (<**), validate
 ,firstOf, manyOf, allOf
 ,(<<<),(<<),(<++),(++>),(<!)
+,wcallback
 
 -- * basic widgets
 ,wprint
@@ -46,12 +47,12 @@ inputSubmit, wbutton, wlink, noWidget, stop,wraw, isEmpty
 ,delSessionData,delSData
 
 -- * reactive and events
-,resetEventData,getEventData,EventData(..),EvData(..)
+,resetEventData,getEventData, setEventData, IsEvent(..), EventData(..),EvData(..)
 ,raiseEvent, fire, wake, react, pass
 ,continueIf, wtimeout, Event(..)
 
 -- * running it
-,runWidget,runWidgetId, runBody, addHeader
+,runWidget,runWidgetId, runBody, addHeader,static , dynamic
 
 -- * Perch is reexported
 ,module Haste.Perch
@@ -60,10 +61,10 @@ inputSubmit, wbutton, wlink, noWidget, stop,wraw, isEmpty
 ,ajax,Method(..)
 
 -- * low level and internals
-,getNextId,genNewId
-,getParam
+,getNextId,genNewId, continuePerch
+,getParam, getCont,runCont
 ,FormInput(..)
-,View(..),FormElm(..)
+,View(..),FormElm(..),EventF(..), MFlowState(..)
 
 )  where
 import Control.Applicative
@@ -71,7 +72,7 @@ import Data.Monoid
 import Control.Monad.State
 import Control.Monad.IO.Class
 import Data.Typeable
-import Data.Dynamic  -- for ajax
+
 import Unsafe.Coerce
 import Data.Maybe
 import Haste
@@ -87,6 +88,7 @@ import Control.Monad.Trans.Maybe
 import Prelude hiding(id,span)
 import Haste.Perch
 import Haste.Ajax
+import Data.Dynamic
 
 --import Debug.Trace
 --(!>)= flip trace
@@ -95,10 +97,12 @@ data NeedForm= HasForm | HasElems  | NoElems deriving Show
 type SData= ()
 
 
-data EventF= forall b c.EventF (Widget b) [b -> Widget c] (Maybe ElemID)
+data EventF= forall b c.EventF (Widget b) [(b -> Widget c,ElemID)]
 
 data MFlowState= MFlowState { mfPrefix :: String,mfSequence :: Int
                             , needForm :: NeedForm, process :: EventF
+                            , fixed :: Bool
+                            , lastEvent :: Dynamic
                             , mfData :: M.Map TypeRep SData}
 
 type Widget a=  View Perch IO a
@@ -108,7 +112,9 @@ data FormElm view a = FormElm view (Maybe a)
 newtype View v m a = View { runView :: WState v m (FormElm v a)}
 
 mFlowState0= MFlowState "" 0 NoElems  (EventF empty
-                        [const  empty ] Nothing )  M.empty
+                        [(const $ empty,"noid") ] ) False
+                        (toDyn $toDyn $ EventData "OnLoad" NoData)
+                        M.empty
 
 
 instance Functor (FormElm view ) where
@@ -144,14 +150,14 @@ strip st x= View $ do
     put st'
     return $ FormElm mempty mx
 
-setEventCont :: Widget a -> (a -> Widget b) -> Maybe ElemID   -> StateT MFlowState IO EventF
-setEventCont x f  mid= do
+setEventCont :: Widget a -> (a -> Widget b)  -> String -> StateT MFlowState IO EventF
+setEventCont x f  id= do
    st <- get
    let conf = process st
    case conf of
-     EventF x' fs mid -> do
+     EventF x' fs  -> do
        let idx=  strip st x
-       put st{process= EventF idx (f: unsafeCoerce fs) mid }
+       put st{process= EventF idx ((f,id): unsafeCoerce fs)  }
    return conf
 
 
@@ -159,20 +165,22 @@ resetEventCont cont= modify $ \s -> s {process= cont}
 
 instance Monad (View Perch IO) where
     x >>= f = View $ do
-       contold <- setEventCont x f Nothing
+       fix <- gets fixed
+       id1 <- genNewId
+       contold <- setEventCont x  f  id1
        FormElm form1 mk <- runView x
-       EventF _ _ fix <- gets process
        resetEventCont contold
-
        case mk of
          Just k  -> do
             FormElm form2 mk <- runView $ f k
-            return $ FormElm (form1 <> maybeSpan fix form2) mk
+            return $ FormElm (form1 <> maybeSpan fix id1 form2) mk
          Nothing ->
-            return $ FormElm  (form1 <> maybeSpan fix noHtml)  Nothing
+            return $ FormElm  (form1 <> maybeSpan fix id1 noHtml)  Nothing
        where
-       maybeSpan Nothing form2= form2
-       maybeSpan (Just id1) form2= span ! id id1 $ form2
+       maybeSpan True id1 form2= form2
+       maybeSpan False id1 form2= span ! id id1 $ form2
+
+
 
     return = View .  return . FormElm  mempty . Just
     fail msg= View . return $ FormElm (inred $ fromStr msg) Nothing
@@ -185,14 +193,13 @@ instance Monad (View Perch IO) where
 -- line in the sequence and the rewriting is not necessary. Thus the size of the HTML and the
 -- performance is improved.
 
-static x= x
---static w= View $ do
---   st <- get
---   let was = fixed st
---   put st{fixed=True}
---   r <- runView $ w
---   modify $ \st -> st{fixed= was}
---   return r
+static w= View $ do
+   st <- get
+   let was = fixed st
+   put st{fixed=True}
+   r <- runView $ w
+   modify $ \st -> st{fixed= was}
+   return r
 
 -- override static locally to permit dynamic effects inside a static widget. It is useful
 -- when a monadic Widget computation which perform no rendering changes has a to do some update:
@@ -204,14 +211,13 @@ static x= x
 -- >    dynamic $ displayUpdate t c f
 -- >    return ()
 
-dynamic x= x
---dynamic w= View $ do
---   st <- get
---   let was = fixed st
---   put st{fixed= False}
---   r <- runView $ w
---   modify $ \st -> st{fixed= was}
---   return r
+dynamic w= View $ do
+   st <- get
+   let was = fixed st
+   put st{fixed= False}
+   r <- runView $ w
+   modify $ \st -> st{fixed= was}
+   return r
 
 instance (FormInput v,Monad (View v m), Monad m, Functor m, Monoid a) => Monoid (View v m a) where
   mappend x y = mappend <$> x <*> y  -- beware that both operands must validate to generate a sum
@@ -543,7 +549,8 @@ setRadio v n= View $ do
       ( finput id "radio" str ( isJust strs ) Nothing `attrs` [("name",n)])
       ret
 
-
+setRadioActive :: (Typeable a, Eq a, Show a) =>
+                    a -> String -> Widget (Radio a)
 setRadioActive rs x= setRadio rs x `raiseEvent` OnClick
 
 -- | encloses a set of Radio boxes. Return the option selected
@@ -775,6 +782,20 @@ wbutton x label= static $ do
         input  ! atr "type" "submit" ! atr "value" label `pass` OnClick
         return x
 
+
+
+continuePerch :: Widget a -> ElemID -> Widget a
+continuePerch w eid= View $ do
+      FormElm f mx <- runView w
+      return $ FormElm (c f) mx
+      where
+      c f =Perch $ \e' ->  do
+         build f e'
+         elemid eid
+
+      elemid id= elemById id >>= return . fromJust
+
+
 -- | Present a link. Return the first parameter when clicked
 wlink :: (Show a, Typeable a) => a -> Perch -> Widget a
 wlink x v= static $ do
@@ -980,16 +1001,87 @@ delSData :: (StateType m ~ MFlowState, MonadState  m,Typeable a) => a -> m ()
 delSData= delSessionData
 
 ---------------------------
-data EvData =  NoData | Click Int (Int, Int) | Mouse (Int, Int) | Key Int deriving (Show,Eq)
-data EventData= EventData{ evName :: String, evData :: EvData} deriving Show
+data EvData =  NoData | Click Int (Int, Int) | Mouse (Int, Int) | MouseOut | Key Int deriving (Show,Eq,Typeable)
+data EventData= EventData{ evName :: String, evData :: EvData} deriving (Show,Typeable)
 
-eventData= unsafePerformIO . newMVar $ EventData "OnLoad" NoData
+--eventData :: MVar Dynamic
+--eventData= unsafePerformIO . newMVar . toDyn $ EventData "OnLoad" NoData
 
-resetEventData :: MonadIO m => m ()
-resetEventData= liftIO . modifyMVar_ eventData . const . return $ EventData "Onload" NoData
+resetEventData :: (StateType m ~ MFlowState, MonadState  m) => m ()
+resetEventData=   modify $ \st -> st{ lastEvent= toDyn $ EventData "Onload" NoData}
 
-getEventData :: MonadIO m => m EventData
-getEventData= liftIO $ readMVar eventData
+
+getEventData :: (Typeable a,  StateType m ~ MFlowState, MonadState  m) => m a
+getEventData = gets lastEvent >>= return . (flip fromDyn) (error "getEventData: event type not expected")
+
+setEventData ::  (Typeable a, StateType m ~ MFlowState, MonadState  m) => a-> m ()
+setEventData dat=  modify $ \st -> st{ lastEvent= toDyn dat}
+
+getMEventData :: (Typeable a, StateType m ~ MFlowState, MonadState  m) => m (Maybe a)
+getMEventData= gets lastEvent >>= return . fromDynamic
+
+
+
+class IsEvent a b | a -> b where
+   eventName :: a -> String
+   handlerBuild :: a -> Widget () -> b
+
+
+
+instance  IsEvent (Event m a) a   where
+   eventName= evtName
+   handlerBuild event proc =
+     let nevent= eventName event
+         runBody' w=  unsafeCoerce $ runBody (static  w) >> return()
+     in case event of
+        OnLoad    ->    runBody' $ setEventData (EventData nevent NoData) >> proc
+        OnUnload  ->    runBody' $ setEventData (EventData nevent NoData) >> proc
+        OnChange  ->    runBody' $ setEventData (EventData nevent NoData) >> proc
+        OnFocus   ->    runBody' $ setEventData (EventData nevent NoData) >> proc
+        OnBlur    ->    runBody' $ setEventData (EventData nevent NoData) >> proc
+
+        OnMouseMove ->   \(x,y) -> runBody' $  do
+                          setEventData $ EventData nevent $ Mouse(x,y)
+                          proc
+
+        OnMouseOver ->   \(x,y) -> runBody' $ do
+                          setEventData $  EventData nevent $ Mouse(x,y)
+                          proc
+
+        OnMouseOut ->    runBody' $ do
+                           setEventData $  EventData nevent $ MouseOut
+                           proc
+
+        OnClick ->       \i (x,y) -> runBody' $ do
+                          setEventData $  EventData nevent $ Click i (x,y)
+                          proc
+
+        OnDblClick ->   \i (x,y) -> runBody' $ do
+                          setEventData $ EventData nevent $ Click i (x,y)
+                          proc
+
+        OnMouseDown ->   \i (x,y) -> runBody' $ do
+                          setEventData $ EventData nevent $ Click i (x,y)
+                          proc
+
+        OnMouseUp ->   \i (x,y) -> runBody' $ do
+                          setEventData $ EventData nevent $ Click i (x,y)
+                          proc
+
+        OnKeyPress ->   \i -> runBody' $ do
+                          setEventData $ EventData nevent $ Key i
+                          proc
+
+        OnKeyUp  ->   \i -> runBody' $ do
+                          setEventData $ EventData nevent $ Key i
+                          proc
+
+        OnKeyDown ->   \i -> runBody' $ do
+                          setEventData $ EventData nevent $ Key i
+                          proc
+
+
+
 
 -- | triggers the event when it happens in the widget.
 --
@@ -1010,89 +1102,42 @@ getEventData= liftIO $ readMVar eventData
 -- monadic computations inside monadic computations are executed following recursively
 -- the steps mentioned above. So an event in a component deep down could or could not
 -- trigger the reexecution of the rest of the whole.
-raiseEvent ::  Widget a -> Event IO b ->Widget a
+raiseEvent ::  IsEvent event callback=> Widget a -> event -> Widget a
 raiseEvent w event = View $ do
- r <- gets process
-
-
- case r of
-  EventF x fs mid -> do
-   id1 <- case mid of
-    Nothing ->do
-        id1 <- genNewId
-        modify $ \st -> st{process= EventF x fs $ Just id1}
-        return id1
-    Just id -> return id
+   cont <- getCont
    FormElm render mx <- runView  w
-   let proc = runChain x (unsafeCoerce fs) id1 >> return ()
-   let nevent= evtName event :: String
-   let putevdata dat= modifyMVar_ eventData $ const $ return dat
-   let render' =  case event of
-        OnLoad    -> addEvent render event $ putevdata (EventData nevent NoData) >> proc
-        OnUnload  -> addEvent (render :: Perch) event $ putevdata (EventData nevent NoData) >> proc
-        OnChange  -> addEvent (render :: Perch) event $ putevdata (EventData nevent NoData) >> proc
-        OnFocus   -> addEvent (render :: Perch) event $ putevdata (EventData nevent NoData) >> proc
-        OnBlur    -> addEvent (render :: Perch) event $ putevdata (EventData nevent NoData) >> proc
+   let proc = wrunCont cont
+       nevent= eventName event
 
-        OnMouseMove -> addEvent (render :: Perch) event $ \(x,y) -> do
-                         putevdata $ EventData nevent $ Mouse(x,y)
-                         proc
-
-        OnMouseOver -> addEvent (render :: Perch) event $ \(x,y) -> do
-                         putevdata $  EventData nevent $ Mouse(x,y)
-                         proc
-
-        OnMouseOut -> addEvent (render :: Perch) event proc
-        OnClick -> addEvent (render :: Perch) event $ \i (x,y) -> do
-                         putevdata $  EventData nevent $ Click i (x,y)
-                         proc
-
-        OnDblClick -> addEvent (render :: Perch) event $ \i (x,y) -> do
-                         putevdata $ EventData nevent $ Click i (x,y)
-                         proc
-
-        OnMouseDown -> addEvent (render :: Perch) event $ \i (x,y) -> do
-                         putevdata $ EventData nevent $ Click i (x,y)
-                         proc
-
-        OnMouseUp -> addEvent (render :: Perch) event $ \i (x,y) -> do
-                         putevdata $ EventData nevent $ Click i (x,y)
-                         proc
-
-        OnKeyPress -> addEvent (render :: Perch) event $ \i -> do
-                         putevdata $ EventData nevent $ Key i
-                         proc
-
-        OnKeyUp  -> addEvent (render :: Perch) event $ \i -> do
-                         putevdata $ EventData nevent $ Key i
-                         proc
-
-        OnKeyDown -> addEvent (render :: Perch) event $ \i -> do
-                         putevdata $ EventData nevent $ Key i
-                         proc
-
+       render' =  addEvent' (render :: Perch) event proc
 
    return $ FormElm render' mx
-
-
-runChain x fs id1= runWidgetId ( x >>= compose fs) id1
-
-      where
-
-      compose []= const empty
-      compose (f: fs)= \x -> f x >>= compose fs
-
+   where
+   -- | create an element and add any event handler to it.
+   -- This is a generalized version of addEvent
+   addEvent' :: IsEvent a b => Perch -> a -> Widget() -> Perch
+   addEvent' be eevent action= Perch $ \e -> do
+        e' <- build be e
+        let event= eventName eevent
+--     has <- getAttr e'  event
+--     case has of
+--       "true" -> return e'
+--       _ -> do
+        let hand = handlerBuild eevent action
+        listen  e' event hand
+--        setAttr e' event "true"
+        return e'
 
 -- | A shorter synonym for `raiseEvent`
-fire ::  Widget a -> Event IO b ->Widget a
+fire ::   IsEvent event callback=> Widget a -> event -> Widget a
 fire = raiseEvent
 
 -- | A shorter and smoother synonym for `raiseEvent`
-wake ::  Widget a -> Event IO b -> Widget a
+wake ::   IsEvent event callback=> Widget a -> event -> Widget a
 wake = raiseEvent
 
 -- | A professional synonym for `raiseEvent`
-react :: Widget a -> Event IO b -> Widget a
+react ::  IsEvent event callback=> Widget a -> event -> Widget a
 react = raiseEvent
 
 -- | pass trough only if the event is fired in this DOM element.
@@ -1127,6 +1172,29 @@ wtimeout t w= View $ do
     liftIO  f
     runView $ identified id w
 
+-- getting and running continuations
+
+getCont ::(StateType m ~ MFlowState, MonadState  m) => m EventF
+getCont = gets process
+
+runCont :: EventF -> IO ()
+runCont ev= runBody  (wrunCont ev) >> return()
+
+wrunCont :: EventF -> Widget ()
+wrunCont (EventF x fs)= do
+   runIt x (unsafeCoerce fs)
+   return ()
+   where
+      runIt x fs= do
+          r <-  x
+--          modify $ \s -> s{fixed= False}
+          compose fs $ r
+
+
+
+
+      compose []= const empty
+      compose ((f,id): fs)= \x -> at id Insert (f x) >>= compose fs
 
 globalState= unsafePerformIO $ newMVar mFlowState0
 
@@ -1211,100 +1279,68 @@ at id method w= View $ do
 
 -- ajax
 
-responseAjax :: IORef [(String,Maybe Dynamic)]
+responseAjax :: IORef [(String,Maybe JSString)]
 responseAjax = unsafePerformIO $ newIORef []
 
 -- | Invoke AJAX. `ToJSString` is a class coverter to-from JavaScript strings
 -- `(a,b)` are the lists of parameters, a is normally `String` or `JSString`.
 -- JSON is also supported for `b` and `c`. If you want to handle your data types, make a instance of
--- `ToJSString`
+-- `JSType`
 --
 -- Note the de-inversion of control. There is no callback.
 --
 -- `ajax` can be combined with other Widgets using monadic, applicative or alternative combinators.
-ajax :: (ToJSString a, ToJSString b, ToJSString c,Typeable c)
+ajax :: (JSType  a, JSType  b, JSType  c,Typeable c)
      => Method -> URL -> [(a, b)] -> Widget (Maybe c)
-ajax method url kv= res
-  where
-  res= View $ do
-      id1 <- genNewId
-      EventF x fs mid <- gets process
-      id2 <- case mid of
-        Nothing -> do
-            modify $ \st -> st{process= EventF x fs $ Just id1}
-            return id1
-        Just id -> return id
+ajax method url kv= View $ do
+      id <- genNewId
       rs <- liftIO $ readIORef responseAjax
-      case lookup id1 rs of
+      case lookup id rs of
         Just rec -> liftIO $ do
-              writeIORef responseAjax $ filter ((/= id1). fst) rs
+               writeIORef responseAjax $ filter ((/= id). fst) rs
 
-              return $ FormElm  mempty $  fmap fromDynamic rec
+               return $ FormElm  mempty $  fmap fromJSString rec
         _ -> do
               proc <- gets process
-              liftIO $ textRequest'  method url kv $ cb id1  proc
-              return $ FormElm noHtml Nothing
+              liftIO $ textRequest'  method url kv $ cb id proc
+              return $ FormElm mempty Nothing
 
-  typeRes :: Widget (Maybe c) -> Maybe c
-  typeRes = undefined
 
+  where
   -- cb :: String -> (Widget a) -> [(b -> Widget c,ElemID)] -> Maybe d -> IO()
-  cb id1 (EventF x fs id2) rec= do
+  cb id cont rec= do
     responses <- readIORef responseAjax
-    liftIO $ writeIORef responseAjax $  (id1,fmap toDyn (rec `asTypeOf` typeRes res )):responses
-    runChain x (unsafeCoerce fs) $ fromMaybe (error "ajax: id not defined") id2
+    liftIO $ writeIORef responseAjax $  (id, rec):responses
+    runCont cont
     return ()
 
 
--- Haste.Ajax  4.3 has a bad definition for POST requests
-
-class ToJSString a where
-  toJSS :: a -> JSString
-  fromJSS :: JSString -> Maybe  a
-
-instance ToJSString JSString where
-  toJSS x= x
-  fromJSS x= Just x
-
-instance ToJSString String where
-  toJSS= toJSStr
-  fromJSS= Just . fromJSStr
-
-instance ToJSString     JSON where
-  toJSS= encodeJSON
-  fromJSS x= case decodeJSON x of
-             Right x -> Just x
-             Left _ -> Nothing
 
 
 
---instance (Read a, Show a) => ToJSString a where
---  toJSS= toJSStr . show
---  fromJSS= read . fromJSStr
-
-textRequest' :: (ToJSString a, ToJSString b, ToJSString c)
+textRequest' :: (JSType a, JSType b, JSType c)
         => Method
         -> URL
         -> [(a, b)]
         -> (Maybe c -> IO ())
         -> IO ()
 textRequest' m url kv cb = do
-        _ <- ajaxReq (toJSS $ show m) url' True pd cb'     -- here postdata is ""
+        _ <- ajaxReq (toJSString $ show m) url' True pd cb'     -- here postdata is ""
         return ()
         where
         cb' = mkCallback $ cb . fmap fromJSS'
         url' = case m of
-               GET -> if null kv then toJSS url else catJSStr (toJSS "?") [toJSS url, toQueryString kv]
-               POST -> toJSS url
+               GET -> if null kv then toJSString url else catJSStr (toJSString "?") [toJSString url, toQueryString kv]
+               POST -> toJSString url
         pd = case m of
-               GET ->  toJSS ""
-               POST -> if null kv then  toJSS "" else toQueryString kv
+               GET ->  toJSString ""
+               POST -> if null kv then  toJSString "" else toQueryString kv
 
-        fromJSS'= fromJust . fromJSS
+        fromJSS'= fromJust . fromJSString
 
 
-toQueryString :: (ToJSString a, ToJSString b) =>[(a, b)] -> JSString
-toQueryString = catJSStr (toJSString "&") . Prelude.map (\(k,v) -> catJSStr (toJSS "=") [toJSS k,toJSS v])
+toQueryString :: (JSType a, JSType b) =>[(a, b)] -> JSString
+toQueryString = catJSStr (toJSString "&") . Prelude.map (\(k,v) -> catJSStr (toJSString "=") [toJSString k,toJSString v])
 
 #ifdef __HASTE__
 foreign import ccall ajaxReq :: JSString    -- method
@@ -1316,3 +1352,5 @@ foreign import ccall ajaxReq :: JSString    -- method
 #else
 ajaxReq= undefined
 #endif
+
+

@@ -37,9 +37,17 @@ data Cell  a = Cell { mk :: Maybe a -> Widget a
 -- a box cell with polimorphic value, identified by a string
 boxCell :: (Show a, Read a, Typeable a) => ElemID -> Cell a
 boxCell id = Cell{ mk= \mv -> getParam (Just id) "text" mv
-                 , setter= \x -> withElem id $ \e -> setProp e "value" (show1 x)
+                 , setter= \x -> do
+                          me <- elemById id
+                          case me of
+                            Just e -> setProp e "value" (show1 x)
+                            Nothing -> return ()
 
-                 , getter= getit}
+                 , getter= do
+                          me <- elemById id
+                          case me of
+                            Nothing -> return Nothing
+                            Just e -> getit}
     where
     getit= withElem id $ \e ->  getProp e "value" >>=  return . read1
     read1 s= if typeOf(typeIO getit) /= typestring
@@ -161,17 +169,6 @@ scell id  expr= Cell{ mk= \mv-> static $ do
             then unsafeCoerce x
             else show x
 
-
-    continuePerch :: Widget a -> ElemID -> Widget a
-    continuePerch w eid= View $ do
-      FormElm f mx <- runView w
-      return $ FormElm (c f) mx
-      where
-      c f =Perch $ \e' ->  do
-         build f e'
-         elemid eid
-
-      elemid id= elemById id >>= return . fromJust
 
 
 calc :: Widget ()
