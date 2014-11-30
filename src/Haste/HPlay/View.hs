@@ -47,7 +47,7 @@ inputSubmit, wbutton, wlink, noWidget, stop,wraw, isEmpty
 ,delSessionData,delSData
 
 -- * reactive and events
-,resetEventData,getEventData, setEventData, IsEvent(..), EventData(..),EvData(..)
+,resetEventData,getEventData, getMEventData, setIOEventData, setEventData, IsEvent(..), EventData(..),EvData(..)
 ,raiseEvent, fire, wake, react, pass
 ,continueIf, wtimeout, Event(..)
 
@@ -97,7 +97,7 @@ data NeedForm= HasForm | HasElems  | NoElems deriving Show
 type SData= ()
 
 
-data EventF= forall b c.EventF (Widget b)  (b -> Widget c)
+data EventF= forall b c.EventF (IO(Maybe b))  (b -> IO (Maybe c))
 
 data MFlowState= MFlowState { mfPrefix :: String
                             , mfSequence :: Int
@@ -113,8 +113,8 @@ type WState view m = StateT MFlowState m
 data FormElm view a = FormElm view (Maybe a)
 newtype View v m a = View { runView :: WState v m (FormElm v a)}
 
-mFlowState0= MFlowState "" 0 NoElems  (EventF empty
-                        (const empty) ) False
+mFlowState0= MFlowState "" 0 NoElems  (EventF (return Nothing)
+                        (const (return Nothing)) ) False
                         (toDyn $toDyn $ EventData "OnLoad" NoData)
                         M.empty
 
@@ -159,8 +159,8 @@ setEventCont x f  id= do
    let conf = process st
    case conf of
      EventF  _ fs  -> do
-       let idx=  strip st x
-       put st{process= EventF idx ( \x ->  at id   $  ( f x) `bind` unsafeCoerce fs)  }
+       let idx=  runWidgetId (strip st x) "noid"
+       put st{process= EventF idx ( \x ->   runWidgetId ( f x) id `bind` unsafeCoerce fs)  }
    return conf
    where
    at id w= View $ do
@@ -1037,67 +1037,63 @@ setEventData dat=  modify $ \st -> st{ lastEvent= toDyn dat}
 getMEventData :: (Typeable a, StateType m ~ MFlowState, MonadState  m) => m (Maybe a)
 getMEventData= gets lastEvent >>= return . fromDynamic
 
+setIOEventData :: Typeable a => a -> IO ()
+setIOEventData dat= do
+  st <- takeMVar globalState
+  putMVar globalState st{ lastEvent= toDyn dat}
+
 
 
 class IsEvent a b | a -> b where
    eventName :: a -> String
-   handlerBuild :: a -> Widget () -> b
+   buildHandler :: a  -> IO () -> b
 
-
-
-instance  IsEvent (Event m a) a   where
+instance  IsEvent (Event m a)  a   where
    eventName= evtName
-   handlerBuild event proc =
+
+   buildHandler event iohandler=
      let nevent= eventName event
-         setDat :: Typeable a => a -> Widget()
-         setDat= static . setEventData
-         runw w=  unsafeCoerce $ runBody  w >> return()
+         setDat :: EventData -> m ()
+         setDat d=  unsafeCoerce $ do
+            setIOEventData d
+            iohandler
+
      in case event of
-        OnLoad    -> runw $ setDat (EventData nevent NoData) >> proc
-        OnUnload  -> runw $ setDat (EventData nevent NoData) >> proc
-        OnChange  -> runw $ setDat (EventData nevent NoData) >> proc
-        OnFocus   -> runw $ setDat (EventData nevent NoData) >> proc
-        OnBlur    -> runw $ setDat (EventData nevent NoData) >> proc
+        OnLoad    ->  setDat (EventData nevent NoData)
+        OnUnload  ->  setDat (EventData nevent NoData)
+        OnChange  ->  setDat (EventData nevent NoData)
+        OnFocus   ->  setDat (EventData nevent NoData)
+        OnBlur    ->  setDat (EventData nevent NoData)
 
-        OnMouseMove ->   \(x,y) -> runw $ do
-                          setDat $ EventData nevent $ Mouse(x,y)
-                          proc
+        OnMouseMove ->   \(x,y) ->  setDat $ EventData nevent $ Mouse(x,y)
 
-        OnMouseOver ->   \(x,y) -> runw $ do
-                          setDat $  EventData nevent $ Mouse(x,y)
-                          proc
 
-        OnMouseOut ->    runw $ do
-                           setDat $  EventData nevent $ MouseOut
-                           proc
+        OnMouseOver ->   \(x,y) ->  setDat $  EventData nevent $ Mouse(x,y)
 
-        OnClick ->       \i (x,y) -> runw $ do
-                          setDat $  EventData nevent $ Click i (x,y)
-                          proc
 
-        OnDblClick ->   \i (x,y) -> runw $ do
-                          setDat $ EventData nevent $ Click i (x,y)
-                          proc
+        OnMouseOut ->     setDat $  EventData nevent $ MouseOut
 
-        OnMouseDown ->   \i (x,y) -> runw $ do
-                          setDat $ EventData nevent $ Click i (x,y)
-                          proc
 
-        OnMouseUp ->   \i (x,y) -> runw $ do
-                          setDat $ EventData nevent $ Click i (x,y)
-                          proc
+        OnClick ->       \i (x,y) -> setDat $  EventData nevent $ Click i (x,y)
 
-        OnKeyPress ->   \i -> runw $ do
-                          setDat $ EventData nevent $ Key i
-                          proc
 
-        OnKeyUp  ->   \i -> runw $ do
-                          setDat $ EventData nevent $ Key i
-                          proc
+        OnDblClick ->   \i (x,y) ->  setDat $ EventData nevent $ Click i (x,y)
 
-        OnKeyDown ->   \i -> runw $ do
-                          setDat $ EventData nevent $ Key i
-                          proc
+
+        OnMouseDown ->   \i (x,y) -> setDat $ EventData nevent $ Click i (x,y)
+
+
+        OnMouseUp ->   \i (x,y) ->  setDat $ EventData nevent $ Click i (x,y)
+
+
+        OnKeyPress ->   \i ->  setDat $ EventData nevent $ Key i
+
+
+        OnKeyUp  ->   \i ->  setDat $ EventData nevent $ Key i
+
+
+        OnKeyDown ->   \i ->  setDat $ EventData nevent $ Key i
+
 
 
 
@@ -1125,22 +1121,22 @@ raiseEvent ::  IsEvent event callback => Widget a -> event -> Widget a
 raiseEvent w event = View $ do
    cont <- getCont
    FormElm render mx <- runView  w
-   let proc = wrunCont cont
+   let iohandler = runCont cont
        nevent = eventName event
 
-       render' = addEvent' (render :: Perch) event proc
+       render' = addEvent' (render :: Perch) event iohandler
 
    return $ FormElm render' mx
    where
    -- | create an element and add any event handler to it.
    -- This is a generalized version of addEvent
-   addEvent' :: IsEvent a b => Perch -> a -> Widget() -> Perch
-   addEvent' be eevent action= Perch $ \e -> do
+   addEvent' :: IsEvent a b => Perch -> a -> IO() -> Perch
+   addEvent' be eevent iohandler= Perch $ \e -> do
         e' <- build be e
         let event= eventName eevent
 
-        let hand = handlerBuild eevent action
-        listen  e' event  hand
+        let hand =  buildHandler eevent iohandler
+        listen  e' event  $ hand
         return e'
 
 -- | A shorter synonym for `raiseEvent`
@@ -1192,22 +1188,26 @@ wtimeout t w= View $ do
 getCont ::(StateType m ~ MFlowState, MonadState  m) => m EventF
 getCont = gets process
 
-runCont :: EventF -> IO ()
-runCont ev= runBody  (wrunCont ev) >> return()
 
-wrunCont :: EventF -> Widget()
-wrunCont (EventF x  fs)= x `bind` fs `bind` const (return ())
-      where
+runCont :: EventF -> IO()
+runCont (EventF x  fs)= x `bind` fs  >> return ()
 
-bind :: Widget a -> (a -> Widget b) -> Widget b
-bind x f = View $ do
-       FormElm form1 mk <- runView x
-       case mk of
-         Just k  -> do
-            FormElm form2 mk <- runView $ f k
-            return $ FormElm (form1 <> form2) mk
-         Nothing ->
-            return $ FormElm  form1  Nothing
+
+bind :: IO (Maybe a) -> (a -> IO (Maybe  b)) -> IO (Maybe b)
+bind x  f= do
+   mr <- x
+   case mr of
+     Just r -> f r
+     Nothing -> return Nothing
+
+--bind x f = View $ do
+--    FormElm form1 mk <- runView x
+--    case mk of
+--      Just k  -> do
+--         FormElm form2 mk <- runView $ f k
+--         return $ FormElm (form1 <> form2) mk
+--      Nothing ->
+--         return $ FormElm  form1  Nothing
 
 globalState= unsafePerformIO $ newMVar mFlowState0
 
@@ -1221,7 +1221,7 @@ runWidgetId ac id =  do
       clearChildren e
       runWidget ac e
      Nothing -> do
-          st <- takeMVar globalState
+          st <- unsafeCoerce $ takeMVar globalState
           (FormElm render mx, s) <- runStateT (runView ac) st
           liftIO $ putMVar globalState s
           return mx
