@@ -1,5 +1,10 @@
 HPlayground
 ==========
+
+NOTE: Porting hplayground from Haste to GHCJS is a task in progress. The Haste version is here:
+
+https://github.com/agocorona/hplayground
+
 latest additions:
 
 * [A monad for reactive programming part 2](https://www.fpcomplete.com/user/agocorona/monad-reactive-programming-2) describes the monadic reactive mechanism of hplayground
