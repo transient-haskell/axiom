@@ -1,5 +1,5 @@
-name: hplayground
-version: 0.1.2.2
+name: ghcjs-hplay
+version: 0.1.2.3
 cabal-version: >=1.8
 build-type: Simple
 license: BSD3
@@ -8,10 +8,10 @@ maintainer: agocorona@gmail.com
 stability: experimental
 homepage: https://github.com/agocorona/hplayground
 bug-reports: https://github.com/agocorona/hplayground/issues
-synopsis: a client-side haskell framework that compiles to javascript with the haste compiler
-description: Formlets with reactive effects in the client side. See homepage
+synopsis: monadic, reactive Formlets running in the Web browser
+description: client-side haskell framework that compiles to javascript with the ghcjs compiler. See homepage
 category: Web
-author: Alberto Gómez Corona
+author: Alberto Gomez Corona
 data-dir: ""
 extra-source-files: src/Main.hs src/Main.html
 
@@ -19,24 +19,14 @@ source-repository head
     type: git
     location: http://github.com/agocorona/hplayground
 
-flag haste-inst
-    Description:  either if it is being compiled with haste-inst or with cabal
-    Default: False
 
 library
+        build-depends: base >4.0 && <5, transformers, containers,
+                       data-default, monads-tf, ghcjs-perch, ghcjs-base
+        exposed: True
+        buildable: True
 
-    if flag(haste-inst)
-        build-depends: base >4.0 && <5, transformers -any, containers -any,
-                       data-default -any, monads-tf -any, haste-lib -any, haste-perch  >= 0.1.0.5
-        exposed: True
-        buildable: True
-    else
-        build-depends: base >4.0 && <5, transformers -any, containers -any,
-                       data-default -any, monads-tf -any, haste-compiler -any,
-                       haste-perch >= 0.1.0.5
-        exposed: True
-        buildable: True
-    exposed-modules: Haste.HPlay.View Haste.HPlay.Cell, Haste.HPlay.WebSockets
+    exposed-modules: GHCJS.HPlay.View GHCJS.HPlay.Cell, GHCJS.HPlay.WebSockets
     exposed: True
     buildable: True
     hs-source-dirs: src .
