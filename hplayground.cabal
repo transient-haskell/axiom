@@ -19,13 +19,11 @@ source-repository head
     type: git
     location: http://github.com/agocorona/ghcjs-hplay
 
-flag ghcjs
-    Description:  either if it is being compiled with haste-inst or with cabal
-    Default: False
+
 
 library
-    if flag(ghcjs)
-        build-depends: base >4.0 && <5, transformers, containers, transient==0.2,
+    if impl(ghcjs >= 0.1)
+        build-depends: base >4.0 && <5, ghcjs-base, transformers, containers, transient==0.2,
                        data-default, mtl, ghcjs-perch, ghcjs-base
         exposed: True
         buildable: True
