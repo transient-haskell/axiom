@@ -1,6 +1,6 @@
 name: ghcjs-hplay
-version: 0.1.2.3
-cabal-version: >=1.8
+version: 0.2
+cabal-version: >= 1.8
 build-type: Simple
 license: BSD3
 license-file: LICENSE
@@ -17,16 +17,25 @@ extra-source-files: src/Main.hs src/Main.html
 
 source-repository head
     type: git
-    location: http://github.com/agocorona/hplayground
+    location: http://github.com/agocorona/ghcjs-hplay
 
+flag ghcjs
+    Description:  either if it is being compiled with haste-inst or with cabal
+    Default: False
 
 library
-        build-depends: base >4.0 && <5, transformers, containers,
-                       data-default, monads-tf, ghcjs-perch, ghcjs-base
+    if flag(ghcjs)
+        build-depends: base >4.0 && <5, transformers, containers, transient==0.2,
+                       data-default, mtl, ghcjs-perch, ghcjs-base
+        exposed: True
+        buildable: True
+    else
+        build-depends: base >4.0 && <5, transformers, containers, transient==0.2,
+                       data-default, mtl, ghcjs-perch
         exposed: True
         buildable: True
 
-    exposed-modules: GHCJS.HPlay.View GHCJS.HPlay.Cell, GHCJS.HPlay.WebSockets
+    exposed-modules: GHCJS.HPlay.View GHCJS.HPlay.Cell
     exposed: True
     buildable: True
     hs-source-dirs: src .

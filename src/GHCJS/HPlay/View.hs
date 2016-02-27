@@ -12,9 +12,10 @@
 --
 -----------------------------------------------------------------------------
 
-{-# LANGUAGE  FlexibleContexts, FlexibleInstances, ForeignFunctionInterface, OverloadedStrings
-    ,DeriveDataTypeable, UndecidableInstances, ExistentialQuantification,TypeFamilies, StandaloneDeriving
-    #-}
+{-# LANGUAGE FlexibleContexts, FlexibleInstances,
+  OverloadedStrings, DeriveDataTypeable, UndecidableInstances,
+  ExistentialQuantification, GeneralizedNewtypeDeriving,
+  NoMonomorphismRestriction, TypeFamilies, CPP #-}
 module GHCJS.HPlay.View(
 Widget,
 -- * re-exported
@@ -22,13 +23,13 @@ module Control.Applicative,
 
 -- * widget combinators and modifiers
 
-(<+>), (**>), (<**), validate
-,firstOf, manyOf, allOf
+(**>), (<**), validate
 ,(<<<),(<<),(<++),(++>),(<!)
+,static, strip
 ,wcallback
 
 -- * basic widgets
-,wprint
+,option,wprint
 ,getString,inputString, getInteger,inputInteger,
 getInt, inputInt,inputFloat, inputDouble,getPassword,inputPassword,
 setRadio,setRadioActive,getRadio
@@ -36,96 +37,125 @@ setRadio,setRadioActive,getRadio
 ,getTextBox, getMultilineText,textArea,getBool
 ,getSelect,setOption,setSelectedOption, wlabel,
 resetButton,inputReset, submitButton,
-inputSubmit, wbutton, wlink, noWidget, stop,wraw, isEmpty
+inputSubmit, wbutton, wlink, noWidget, wraw, rawHtml, isEmpty,
+-- * Event
+
+BrowserEvent(..)
 
 -- * out of flow updates
 ,at, UpdateMethod(..)
 
--- * Session data storage
-,getSessionData,getSData,setSessionData,setSData
-,delSessionData,delSData
 
 -- * reactive and events
-,resetEventData,getEventData, getMEventData, setIOEventData, setEventData, IsEvent(..), EventData(..),EvData(..)
-,raiseEvent, fire, wake, react, pass
-,continueIf, wtimeout, Event(..)
+,resetEventData,getEventData, setEventData, IsEvent(..), EventData(..),EvData(..)
+,raiseEvent, fire, wake, pass
+,continueIf, IdLine(..)
 
 -- * running it
-,runWidget,runWidgetId, runBody, addHeader,static , dynamic
+,keep, keep', runCloud
+,runWidget,runWidgetId', runBody, addHeader, render
 
 -- * Perch is reexported
 ,module GHCJS.Perch
 
--- * communications
-,ajax,Method(..)
 
 -- * low level and internals
-,getNextId,genNewId, continuePerch
+,getNextId,genNewId, continuePerch, addPrefix
 ,getParam, getCont,runCont
-,FormInput(..)
-,View(..),FormElm(..),EventF(..), MFlowState(..)
+,FormInput(..),
 
+ElemID, elemById,withElem,getProp,setProp, alert,
+fromJSString, toJSString,
+viewEffects
 )  where
+import Transient.Base hiding (input,option,keep, keep',runCloud)
+import Transient.Move (Cloud(..))
 import Control.Applicative
 import Data.Monoid
-import Control.Monad.State
+
 import Control.Monad.IO.Class
+import Control.Monad.State
+
 import Data.Typeable
 
 import Unsafe.Coerce
 import Data.Maybe
-import Unsafe.Coerce
 import System.IO.Unsafe
 import Control.Concurrent.MVar
 import Data.IORef
 import qualified Data.Map as M
 import Control.Monad.Trans.Maybe
 import Prelude hiding(id,span)
-import GHCJS.Perch
-import GHCJS.Types
-import GHCJS.Marshal
-import GHCJS.Foreign hiding (typeOf,getProp)
+import GHCJS.Perch hiding (eventName,JsEvent(..),option )
 import Data.Dynamic
 
---import Debug.Trace
---(!>)= flip trace
+import Control.Concurrent
 
-foreign import javascript unsafe  "%1[%2].toString()" getPropDOM :: Elem -> JSString -> IO (JSRef JSString)
+#ifdef ghcjs_HOST_OS
+import GHCJS.Types
+import GHCJS.Marshal
+import GHCJS.Foreign
+import GHCJS.Foreign.Callback -- as CB
 
-getProp :: MonadIO m => Elem -> JSString -> m String
-getProp e s= liftIO $ do
-  rs <- getPropDOM e s
-  ms <- fromJSRef rs
-  return $ case ms of
-     Nothing -> ""
-     Just s  -> fromJSString s
+import Data.JSString as JS hiding (span,empty,strip)
 
-instance FromJSRef a => FromJSRef (Maybe a) where
- fromJSRef r =
-   if eqRef r jsNull || eqRef r jsUndefined
-    then return $ Just Nothing
-    else do
-        mx <- fromJSRef $ castRef r
-        return $ case mx of
-            Just x -> Just (Just x)
-            Nothing -> Nothing
 
-foreign import javascript unsafe  "document.getElementById($1)" elemByIdDOM  :: JSString -> IO (JSRef Elem)
 
-foreign import javascript unsafe  "$1.value" getValueDOM :: Elem -> IO JSString
+foreign import javascript unsafe  "$1[$2].toString()" getProp :: Elem -> JSString -> IO JSString
+foreign import javascript unsafe  "$1[$2]= $3" setProp :: Elem -> JSString -> JSString -> IO ()
+foreign import javascript unsafe  "alert($1)" alert ::  JSString -> IO ()
 
-instance FromJSString (Maybe String) where
-   fromJSString s= if isUndefined s then Nothing else Just $ fromJSString s
 
-getValue :: MonadIO m => JSType a => Elem -> m (Maybe a)
-getValue e= liftIO $  do
+
+foreign import javascript unsafe  "document.getElementById($1)" elemByIdDOM  :: JSString -> IO JSVal
+
+foreign import javascript unsafe  "$1.value" getValueDOM :: Elem -> IO JSVal
+#else
+unpack= undefined
+getProp :: Elem -> JSString -> IO JSString
+getProp = undefined
+setProp :: Elem -> JSString -> JSString -> IO ()
+setProp = undefined
+alert ::  JSString -> IO ()
+alert= undefined
+data Callback a= Callback a
+data ContinueAsync=ContinueAsync
+syncCallback1= undefined
+fromJSValUnchecked= undefined
+fromJSValUncheckedListOf= undefined
+#endif
+
+toJSString x=
+     if typeOf x== typeOf (undefined :: String )
+        then pack $ unsafeCoerce x
+        else pack $ show x
+
+fromJSString :: (Typeable a,Read a) => JSString -> a
+fromJSString s= x
+   where
+   x | typeOf x == typeOf (undefined :: JSString) =
+       unsafeCoerce x            -- !!> "unsafecoerce"
+     | typeOf x == typeOf (undefined :: String) =
+       unsafeCoerce $ pack $ unsafeCoerce x            -- !!> "packcoerce"
+     | otherwise = read $ unpack s            -- !!> "readunpack"
+
+getValue :: MonadIO m => Elem -> m (Maybe String)
+#ifdef ghcjs_HOST_OS
+getValue e= liftIO $ do
    s <- getValueDOM e
-   return $ fromJSString s
+   fromJSVal s -- return $ JS.unpack s
+#else
+getValue= undefined
+#endif
 
 elemById :: MonadIO m  => JSString -> m (Maybe Elem)
+#ifdef ghcjs_HOST_OS
 elemById id= liftIO $ do
    re <- elemByIdDOM id
-   fromJSRef re
+   fromJSVal re
+#else
+elemById= undefined
+#endif
 
 withElem :: ElemID -> (Elem -> IO a) -> IO a
 withElem id f= do
@@ -134,155 +164,22 @@ withElem id f= do
      Nothing -> error ("withElem: not found"++ fromJSString id)
      Just e -> f e
 
+atElem :: ElemID -> Perch -> Perch
+atElem id f = Perch $ \ _ -> do
+  me <- elemById id
+  case me of
+     Nothing -> error ("withElem: not found"++ fromJSString id)
+     Just e -> build f e
 
 data NeedForm= HasForm | HasElems  | NoElems deriving Show
-type SData= ()
+
 
 type ElemID= JSString
-
-data EventF= forall b c.EventF (IO(Maybe b))  (b -> IO (Maybe c))
-
-data MFlowState= MFlowState { mfPrefix :: String
-                            , mfSequence :: Int
-                            , needForm :: NeedForm
-                            , process :: EventF
-                            , fixed :: Bool
-                            , lastEvent :: Dynamic
-                            , mfData :: M.Map TypeRep SData}
-
-type Widget a=  View Perch IO a
-type WState view m = StateT MFlowState m
-data FormElm view a = FormElm view (Maybe a)
-newtype View v m a = View { runView :: WState v m (FormElm v a)}
-
-mFlowState0= MFlowState "" 0 NoElems  (EventF (return Nothing)
-                        (const (return Nothing)) ) False
-                        (toDyn $toDyn $ EventData "OnLoad" NoData)
-                        M.empty
-
-noid= error "noId error"
-
-instance Functor (FormElm view ) where
-  fmap f (FormElm form x)= FormElm form (fmap f x)
-
-instance (Monoid view) => Monoid (FormElm view a) where
-  mempty= FormElm mempty Nothing
-  mappend (FormElm f1 x1) (FormElm f2 x2)= FormElm (f1 <> f2) (x1 <|> x2)
-
-instance  (Monad m,Functor m) => Functor (View view m) where
-  fmap f x= View $   fmap (fmap f) $ runView x
+type Widget a=  TransIO a
 
 
-instance (Monoid view,Functor m, Monad m) => Applicative (View view m) where
-  pure a  = View  .  return . FormElm mempty $ Just a
-  View f <*> View g= View $
-                   f >>= \(FormElm form1 k) ->
-                   g >>= \(FormElm form2 x) ->
-                   return $ FormElm (form1 `mappend` form2) (k <*> x)
-
-instance (Monoid view, Functor m, Monad m) => Alternative (View view m) where
-  empty= View $ return $ FormElm mempty Nothing
-  View f <|> View g= View $ do
-                   FormElm form1 x <- f
-                   FormElm form2 y <- g
-                   return $ FormElm (form1 <> form2) (x <|> y)
-
-
-
-strip st x= View $ do
-    st' <- get
-    put st'{mfSequence= mfSequence st}
-    FormElm f mx <- runView x
-    put st'
-    return $ FormElm mempty mx
-
-setEventCont :: Widget a -> (a -> Widget b)  -> ElemID -> StateT MFlowState IO EventF
-setEventCont x f  id= do
-   st <- get
-   let conf = process st
-   case conf of
-     EventF  _ fs  -> do
-       let idx=  runWidgetId (strip st x) "noid"
-       put st{process= EventF idx ( \x ->   runWidgetId ( f x) id `bind` unsafeCoerce fs)  }
-   return conf
-   where
-   at id w= View $ do
-      FormElm render mx <- (runView w)
-      return $ FormElm  (set  render)  mx
-      where
-      set render= liftIO $ do
-         me <- elemById id
-         case me of
-          Nothing -> return ()
-          Just e ->  do
-                     clearChildren e
-                     build render e
-                     return ()
-
-
-resetEventCont cont= modify $ \s -> s {process= cont}
-
-instance Monad (View Perch IO) where
-    x >>= f = View $ do
-       fix <- gets fixed
-       id1 <- genNewId 
-       contold <- setEventCont x  f   id1
-       FormElm form1 mk <- runView x
-       resetEventCont contold
-       case mk of
-         Just k  -> do
-            FormElm form2 mk <- runView $ f k
-            return $ FormElm (form1 <> maybeSpan fix id1 form2) mk
-         Nothing ->
-            return $ FormElm  (form1 <> maybeSpan fix id1 noHtml)  Nothing
-       where
-       maybeSpan True id1 form= form
-       maybeSpan False id1 form= span ! id id1 $ form
-
-
-
-    return = View .  return . FormElm  mempty . Just
-    fail msg= View . return $ FormElm (inred $ fromStr $ toJSString msg) Nothing
-
-
--- | To produce updates, each line of html produced by a "do" sequence in the Widget monad is included
--- within a 'span' tag. When the line is reexecuted after a event, the span is updated with the new
--- rendering.
---
--- static tell to the rendering that this widget does not change, so the extra 'span' tag for each
--- line in the sequence and the rewriting is not necessary. Thus the size of the HTML and the
--- performance is improved.
-
-static w= View $ do
-   st <- get
-   let was = fixed st
-   put st{fixed=True}
-   r <- runView $ w
-   modify $ \st -> st{fixed= was}
-   return r
-
--- override static locally to permit dynamic effects inside a static widget. It is useful
--- when a monadic Widget computation -which perform no changes in rendering- has a to do some update:
---
--- > launchMissiles= static $ do
--- >    t <- armLauncher
--- >    c <- fixTarget t
--- >    f <- fire c
--- >    dynamic $ displayUpdate t c f
--- >    return ()
-
-dynamic w= View $ do
-   st <- get
-   let was = fixed st
-   put st{fixed= False}
-   r <- runView $ w
-   modify $ \st -> st{fixed= was}
-   return r
-
-instance (FormInput v,Monad (View v m), Monad m, Functor m, Monoid a) => Monoid (View v m a) where
-  mappend x y = mappend <$> x <*> y  -- beware that both operands must validate to generate a sum
-  mempty= return mempty
-
+runView :: TransIO a -> StateIO (Maybe a)
+runView  = runTrans
 
 -- | It is a callback in the view monad. The rendering of the second parameter substitutes the rendering
 -- of the first paramenter when the latter validates without afecting the rendering of other widgets.
@@ -291,118 +188,25 @@ instance (FormInput v,Monad (View v m), Monad m, Functor m, Monoid a) => Monoid 
 wcallback
   ::  Widget a -> (a ->Widget b) -> Widget b
 
-wcallback x f= View $ do
-   nid <-  genNewId 
-   FormElm form mx <- runView $ do
+wcallback x f= Transient $ do
+   nid <-  genNewId
+   runView $ do
              r <-  at nid Insert x
              at nid Insert $ f r
 
-   return $ FormElm ((GHCJS.Perch.span ! atr "id" nid $ noHtml) <> form) mx
 
 
-
-identified id w= View $ do
-     let span= nelem "span" `attr` ("id", id)
-     FormElm f mx <- runView w
-     return $ FormElm (span `child` f) mx
-
-
-instance  (FormInput view,Monad m,Monad (View view m)) => MonadState (View view m) where
-  type StateType (View view m)= MFlowState
-  get = View $  get >>=  return . FormElm mempty . Just
-  put st = View $  put st >>=  return . FormElm mempty . Just
-
-
-instance (FormInput view,Monad (View view m),MonadIO m) => MonadIO (View view m) where
-    liftIO io=   let x= liftIO io in x `seq` lift x
-
-
------ some combinators ----
-
--- | Join two widgets in the same page
--- the resulting widget, when `ask`ed with it, return a 2 tuple of their validation results
--- if both return Noting, the widget return @Nothing@ (invalid).
---
--- it has a low infix priority: @infixr 2@
---
---  > r <- ask  widget1 <+>  widget2
---  > case r of (Just x, Nothing) -> ..
-(<+>) , mix ::  (Monad m, FormInput view)
-      => View view m a
-      -> View view m b
-      -> View view m (Maybe a, Maybe b)
-mix digest1 digest2= View $ do
-  FormElm f1 mx' <- runView  digest1
-  s1 <- get
-  FormElm f2 my' <- runView  digest2
-  s2 <- get
-  return $ FormElm (f1 <> f2)
-         $ case (mx',my') of
-              (Nothing, Nothing) -> Nothing
-              other              -> Just other
-
-infixr 2 <+>
-
-(<+>)  = mix
-
-
-
--- | The first elem result (even if it is not validated) is discarded, and the secod is returned
--- . This contrast with the applicative operator '*>' which fails the whole validation if
--- the validation of the first elem fails.
---
--- However, the first element is displayed, as happens in the case of '*>' .
---
--- Here @w\'s@ are widgets and @r\'s@ are returned values
---
---   @(w1 <* w2)@  will return @Just r1@ only if w1 and w2 are validated
---
---   @(w1 <** w2)@ will return @Just r1@ even if w2 is not validated
---
---  it has a low infix priority: @infixr 1@
-
-(**>) :: (Functor m, Monad m, FormInput view)
-      => View view m a -> View view m b -> View view m b
-
-(**>) f g = View $ do
-   FormElm form1 k <- runView $ valid f
-   FormElm form2 x <- runView g
-   return $ FormElm (form1 <> form2) (k *> x)
-
-
-
-valid form= View $ do
-   FormElm form mx <- runView form
-   return $ FormElm form $ Just undefined
-
-infixr 1  **>  ,  <**
-
--- | The second elem result (even if it is not validated) is discarded, and the first is returned
--- . This contrast with the applicative operator '*>' which fails the whole validation if
--- the validation of the second elem fails.
--- The second element is displayed however, as in the case of '<*'.
--- see the `<**` examples
---
---  it has a low infix priority: @infixr 1@
-(<**) :: (Functor m, Monad m, FormInput view) =>
-     View view m a -> View view m b -> View view m a
--- (<**) form1 form2 =  form1 <* valid form2
-(<**) f g = View $ do
-   FormElm form1 k <- runView f
-   s1 <- get
-   FormElm form2 x <- runView $ valid g
-   s2 <- get
-
-
-   return $ FormElm (form1 <> form2) (k <* x)
+identified id w=  span ! atr "id" id <<< w
+--     where
+--     span1= span" ! ("id", id)
 
 
 
 
-
+{-
 instance Monoid view => MonadTrans (View view) where
-  lift f = View $  (lift  f) >>= \x ->  return $ FormElm mempty $ Just x
-
+  lift f = Transient $  (lift  f) >>= \x ->  returnFormElm mempty $ Just x
+-}
 
 type Name= JSString
 type Type= JSString
@@ -445,42 +249,40 @@ isValidated (Validated x)= True
 isValidated _= False
 
 fromValidated (Validated x)= x
-fromValidated NoParam= error $ "fromValidated : NoParam"
+fromValidated NoParam= error "fromValidated : NoParam"
 fromValidated (NotValidated s err)= error $ "fromValidated: NotValidated "++ s
 
-getParam1 :: (MonadIO m, MonadState  m, Typeable a, Read a, FormInput v)
-          => JSString ->  m (ParamResult v a)
+getParam1 :: ( Typeable a, Read a, Show a)
+          => JSString ->  StateIO (ParamResult Perch a)
 getParam1 par = do
-   me <- elemById par
+   me <- elemById par             -- !!> ("looking for " ++ show par)
    case me of
      Nothing -> return  NoParam
      Just e ->  do
-       mv <- getValue e
-       case mv of
-         Nothing -> return NoParam
-         Just v -> do
-           readParam v
+       v <- getValue e            -- !!> ("exist" ++ show par)
+       readParam v            -- !!> ("getParam for "++ show v)
 
 
 type Params= Attribs
 
 
 
-readParam :: (Monad m, MonadState  m, Typeable a, Read a, FormInput v)
-           => String -> m (ParamResult v a)
-readParam x1 = r
+readParam :: (Typeable a, Read a, Show a)=> Maybe String -> StateIO (ParamResult Perch a)
+readParam Nothing = return NoParam
+readParam (Just x1) = r
  where
  r= maybeRead x1
 
  getType ::  m (ParamResult v a) -> a
  getType= undefined
  x= getType r
+
  maybeRead str= do
    let typeofx = typeOf x
    if typeofx == typeOf  ( undefined :: String)   then
-           return . Validated $ unsafeCoerce str
-    else case readsPrec 0 $ str of
-              [(x,"")] ->  return $ Validated x
+           return . Validated $ unsafeCoerce str            -- !!> ("maybread string " ++ str)
+    else case reads $ str  of          --            -- !!> ("read " ++ str) of
+              [(x,"")] ->  return $ Validated x            -- !!> ("readsprec" ++ show x)
               _ -> do
                    let err= inred . fromStr $ toJSString $ "can't read \"" ++ str ++ "\" as type " ++  show (typeOf x)
                    return $ NotValidated str err
@@ -490,143 +292,136 @@ readParam x1 = r
 -- @getOdd= getInt Nothing `validate` (\x -> return $ if mod x 2==0 then  Nothing else Just "only odd numbers, please")@
 validate
   :: Widget a
-     -> (a -> WState Perch IO (Maybe Perch))
-     -> Widget a
-validate  w val= static $ do
-   idn <- genNewId
+     -> (a -> StateIO  (Maybe Perch))
+     -> TransIO a
+validate  w val=  do
+   idn <- Transient $ Just <$> genNewId
    wraw $ span ! id idn $ noHtml
    x <-  w
-   View $ do
+   Transient $ do
           me <- val x
           case me of
              Just str -> do
                   liftIO $ withElem idn $ build $ clear >> inred  str
-                  return $ FormElm mempty Nothing
+                  return Nothing
              Nothing  -> do
-                  liftIO $ withElem idn $ build $ clear
-                  return $ FormElm mempty $ Just x
+                  liftIO $ withElem idn $ build clear
+                  return $ Just x
 
 
 
-
+newtype Prefix= Prefix JSString
 -- | Generate a new string. Useful for creating tag identifiers and other attributes.
 --
 -- if the page is refreshed, the identifiers generated are the same.
-genNewId :: (StateType m ~ MFlowState, MonadState  m) =>  m JSString
+genNewId ::  StateIO  JSString
 genNewId=  do
-      st <- get
-      let n= mfSequence st
-          prefseq=  mfPrefix st
-      put $ st{mfSequence= n+1}
+      Log _ _ log <- getSessionData `onNothing` return (Log False [] [])
+      mid <- getSessionData
+      let pre = case mid of
+                Nothing -> ""
+                Just(Prefix pre ) ->  pre
 
-      return $  toJSString $ 'p':show n++prefseq
+      n <- genId                      -- !!> "genNewId"
+      return  $ pre <> (toJSString $ 'p':  (show $ Prelude.length log)++ ('n':show n))
+
+addPrefix= Transient $ do
+   n <- genId
+   Prefix s <- getSessionData `onNothing` return ( Prefix "")
+   setSData $ Prefix (toJSString( 's': show n) <> s)
+   return $ Just ()
 
 
 -- | get the next ideitifier that will be created by genNewId
-getNextId :: (StateType m ~ MFlowState,MonadState  m) =>  m JSString
+getNextId :: MonadState EventF  m  =>  m JSString
 getNextId=  do
-      st <- get
-      let n= mfSequence st
-          prefseq=  mfPrefix st
-      return $ toJSString $ 'p':show n++prefseq
+      n <- gets mfSequence
+
+      return $ toJSString $ 'p':show n
 
 
 -- | Display a text box and return a non empty String
-getString  :: (StateType (View view m) ~ MFlowState,FormInput view,Monad(View view m),MonadIO m) =>
-     Maybe String -> View view m String
-getString ms = getTextBox ms
+getString  ::  Maybe String -> TransIO String
+getString = getTextBox
 --     `validate`
 --     \s -> if Prelude.null s then return (Just $ fromStr "")
 --                    else return Nothing
 
-inputString  :: (StateType (View view m) ~ MFlowState,FormInput view,Monad(View view m),MonadIO m) =>
-     Maybe String -> View view m String
+inputString  :: Maybe String -> TransIO String
 inputString= getString
 
 -- | Display a text box and return an Integer (if the value entered is not an Integer, fails the validation)
-getInteger :: (StateType (View view m) ~ MFlowState,FormInput view,  MonadIO m) =>
-     Maybe Integer -> View view m  Integer
+getInteger :: Maybe Integer -> TransIO  Integer
 getInteger =  getTextBox
 
-inputInteger :: (StateType (View view m) ~ MFlowState,FormInput view,  MonadIO m) =>
-     Maybe Integer -> View view m  Integer
+inputInteger ::  Maybe Integer -> TransIO  Integer
 inputInteger= getInteger
 
 -- | Display a text box and return a Int (if the value entered is not an Int, fails the validation)
-getInt :: (StateType (View view m) ~ MFlowState,FormInput view, MonadIO m) =>
-     Maybe Int -> View view m Int
+getInt :: Maybe Int -> TransIO Int
 getInt =  getTextBox
 
-inputInt :: (StateType (View view m) ~ MFlowState,FormInput view, MonadIO m) =>
-     Maybe Int -> View view m Int
+inputInt :: Maybe Int -> TransIO Int
 inputInt =  getInt
 
-inputFloat :: (StateType (View view m) ~ MFlowState,FormInput view, MonadIO m) =>
-     Maybe Float -> View view m Float
+inputFloat :: Maybe Float -> TransIO Float
 inputFloat =  getTextBox
 
-inputDouble :: (StateType (View view m) ~ MFlowState,FormInput view, MonadIO m) =>
-     Maybe Double -> View view m Double
+inputDouble :: Maybe Double -> TransIO Double
 inputDouble =  getTextBox
 
 -- | Display a password box
-getPassword :: (FormInput view,StateType (View view m) ~ MFlowState,
-     MonadIO m) =>
-     View view m String
-getPassword = getParam Nothing "password" Nothing
+getPassword :: TransIO String
+getPassword = getParam  "password" Nothing
 
-inputPassword :: (StateType (View view m) ~ MFlowState,FormInput view,
-     MonadIO m) =>
-     View view m String
+inputPassword ::   TransIO String
 inputPassword= getPassword
 
-newtype Radio a= Radio a
+newtype Radio a= Radio a deriving Monoid
 
---instance Eq JSString where
---  x== y = eqjs x y
-
---foreign import javascript safe  "$1 == $2"
---     eqjs ::  a -> a -> Bool
 
 
 -- | Implement a radio button
 -- the parameter is the name of the radio group
-setRadio :: (FormInput view,  MonadIO m,
-             Typeable a, Eq a, Show a) =>
-            a -> JSString -> View view m  (Radio a)
-setRadio v n= View $ do
+setRadio :: (Typeable a, Eq a, Show a) =>
+            a ->  TransIO  (Radio a)
+setRadio v = Transient $ do
+  RadioId n <- getSessionData `onNothing` error "setRadio out of getRadio"
   id <- genNewId
   st <- get
-  put st{needForm= HasElems}
+--  setSessionData HasElems       -- only for MFlow
   me <- liftIO $ elemById id
-  checked <-  case me of
-       Nothing -> return "" 
-       Just e  -> getProp e "checked"  
+  checked <-  case me  of
+       Nothing -> return ""
+       Just e  -> liftIO $ getProp e "checked"
   let strs= if  checked=="true" then Just v else Nothing
 --  let mn= if null strs then False else True
       ret= fmap  Radio  strs
       str = if typeOf v == typeOf(undefined :: String)
                    then unsafeCoerce v else show v
-  return $ FormElm
-      ( finput id "radio" (toJSString str) ( isJust strs ) Nothing `attrs` [("name",n)])
-      ret
+  addSData
+      ( finput id "radio" (toJSString str) ( isJust strs ) Nothing `attrs` [("name",n)] :: Perch)
+  return ret
 
 setRadioActive :: (Typeable a, Eq a, Show a) =>
-                    a -> JSString -> Widget (Radio a)
-setRadioActive rs x= setRadio rs x `raiseEvent` OnClick
+                    a -> Widget (Radio a)
+setRadioActive rs = setRadio rs `raiseEvent` OnClick
+
+data RadioId= RadioId JSString deriving Typeable
 
 -- | encloses a set of Radio boxes. Return the option selected
 getRadio
-  :: (Monad (View view m), Monad m, Functor m, FormInput view) =>
-     [JSString -> View view m (Radio a)] -> View view m a
-getRadio ws = View $ do
+  :: Monoid a => [TransIO (Radio a)] -> TransIO a
+getRadio ws = Transient $ do
    id <- genNewId
-   fs <- mapM (\w -> runView (w id)) ws
-   let FormElm render mx = mconcat fs
-   return $ FormElm render $ fmap (\(Radio r) -> r) mx
+   setSData $ RadioId id
+   fs <- mapM runView  ws
+   let mx = mconcat fs
+   delSData $ RadioId id
+   return $ fmap (\(Radio r) -> r) mx
 
 
-data CheckBoxes a= CheckBoxes [a]
+data CheckBoxes a= CheckBoxes [a] deriving Show
 
 instance Monoid (CheckBoxes a) where
   mappend (CheckBoxes xs) (CheckBoxes ys)= CheckBoxes $ xs ++ ys
@@ -634,123 +429,113 @@ instance Monoid (CheckBoxes a) where
 
 
 -- | Display a text box and return the value entered if it is readable( Otherwise, fail the validation)
-setCheckBox :: (FormInput view,  MonadIO m, Typeable a , Show a) =>
-                Bool -> a -> View view m  (CheckBoxes a)
-setCheckBox checked' v= View $ do
+setCheckBox :: (Typeable a , Show a) =>
+                Bool -> a -> TransIO  (CheckBoxes a)
+setCheckBox checked' v= Transient $ do
   n  <- genNewId
   st <- get
-  put st{needForm= HasElems}
+  setSessionData HasElems
   me <- liftIO $ elemById n
-  checked <- case me of
+  checked <- case me of             -- !!>  show ("setCheckBox",n,isJust me) of
        Nothing ->  return $ if checked' then "true" else ""
-       Just e  -> getProp e "checked"
-  let strs= if  checked=="true" then [v] else []
-      ret= Just $ CheckBoxes  strs
-      showv= toJSString $ case typeOf v== typeOf (undefined ::String) of
-               True -> unsafeCoerce v
-               False -> show v
-  return $ FormElm
-      ( finput n "checkbox" showv ( checked' ) Nothing)
-      ret
+       Just e  -> liftIO $ getProp e "checked"
+
+  let strs= if  checked=="true"  then [v] else []
+      showv= toJSString (if typeOf v == typeOf (undefined :: String)
+                             then unsafeCoerce v
+                             else show v)
+
+  addSData $  ( finput n "checkbox" showv  checked' Nothing :: Perch)
+  return $ Just $ CheckBoxes  strs             -- !!> show ("checkbox return", strs)
 
 
-getCheckBoxes :: (Monad m, FormInput view) =>  View view m  (CheckBoxes a) ->  View view m  [a]
-getCheckBoxes w= View $ do
-   FormElm render mcb <- runView w
-   return $ FormElm render $ case mcb of
-     Just(CheckBoxes rs) -> Just rs
-     _                   -> Nothing
+getCheckBoxes ::  Show a=> TransIO  (CheckBoxes a) ->  TransIO  [a]
+--getCheckBoxes w= Transient $ do
+--   mcb <- runView w
+--   liftIO $ print "PASSED"
+--   return $ case mcb             -- !!> show ("checks",mcb) of
+--     Just(CheckBoxes rs) -> Just rs
+--     _                   -> Nothing
 
+getCheckBoxes w=  do
+   CheckBoxes rs <-  w
+   return rs
 
-
-whidden :: (MonadIO m, FormInput v,Read a, Show a, Typeable a) => a -> View v m a
+whidden :: (Read a, Show a, Typeable a) => a -> TransIO a
 whidden x= res where
- res= View $ do
+ res= Transient $ do
       n <- genNewId
       let showx= case cast x of
                   Just x' -> x'
                   Nothing -> show x
-      r <- getParam1 n `asTypeOf` typef res
-      return . FormElm (finput n "hidden" (toJSString showx) False Nothing) $ valToMaybe r
+      r <- getParam1 n  `asTypeOf` typef res
+      addSData (finput n "hidden" (toJSString showx) False Nothing :: Perch)
+      return (valToMaybe r)
       where
-      typef :: View v m a -> StateT MFlowState m (ParamResult v a)
+      typef :: TransIO a -> StateIO (ParamResult Perch a)
       typef = undefined
 
 
 
 
 getTextBox
-  :: (FormInput view, StateType (View view m) ~ MFlowState,
-      MonadIO  m,
-      Typeable a,
+  :: (Typeable a,
       Show a,
       Read a) =>
-     Maybe a ->  View view m a
-getTextBox ms  = getParam Nothing "text" ms
+     Maybe a ->  TransIO a
+getTextBox ms  = getParam  "text" ms
 
 
 getParam
-  :: (FormInput view,StateType (View view m) ~ MFlowState,
-      MonadIO m,
-      Typeable a,
+  :: (Typeable a,
       Show a,
       Read a) =>
-     Maybe JSString -> JSString -> Maybe a -> View view m  a
-getParam look type1 mvalue= View $ getParamS look type1 mvalue
+      JSString -> Maybe a -> TransIO  a
+getParam  type1 mvalue= Transient $ getParamS  type1 mvalue
 
-getParamS look type1 mvalue= do
-    tolook <- case look of
-       Nothing  -> genNewId
-       Just n -> return n
-    let nvalue x = toJSString $ case x of
-           Nothing  -> ""
-           Just v   ->
-              case cast v of
-                 Just v' -> v'
-                 Nothing -> show v
-    st <- get
+getParamS  type1 mvalue= do
+    tolook <-  genNewId
 
-    put st{needForm= HasElems}
+    let nvalue x =  case x of
+          Nothing -> mempty
+          Just v  ->
+              if (typeOf v== typeOf (undefined :: String)) then  pack (unsafeCoerce v)
+              else if typeOf v== typeOf (undefined :: JSString) then unsafeCoerce v            -- !!> "jsstring"
+              else toJSString $ show v             -- !!> "show"
+
+    setSessionData HasElems
     r <- getParam1 tolook
+
     case r of
-       Validated x        -> return $ FormElm (finput tolook type1 (nvalue $ Just x) False Nothing) $ Just x
-       NotValidated s err -> return $ FormElm (finput tolook type1 (toJSString s) False Nothing <> err) $ Nothing
-       NoParam            -> return $ FormElm (finput tolook type1 (nvalue mvalue) False Nothing) $ Nothing
+       Validated x        -> do addSData (finput tolook type1 (nvalue $ Just x) False Nothing :: Perch) ; return $ Just x            -- !!> "validated"
+       NotValidated s err -> do addSData (finput tolook type1  (toJSString s) False Nothing <> err :: Perch); return Nothing
+       NoParam            -> do setSData WasParallel;addSData (finput tolook type1 (nvalue mvalue) False Nothing :: Perch); return  Nothing
 
 
 
 
 -- | Display a multiline text box and return its content
-getMultilineText :: (FormInput view
-                 ,  MonadIO m)
-                   => JSString
-                 ->  View view m String
+getMultilineText :: JSString
+                 -> TransIO String
 getMultilineText nvalue =  res where
- res= View $ do
+ res= Transient $ do
     tolook <- genNewId
     r <- getParam1 tolook  `asTypeOf` typef res
     case r of
-       Validated x        -> return $ FormElm (ftextarea tolook  x) $ Just x
-       NotValidated s err -> return $ FormElm (ftextarea tolook   (toJSString s))  Nothing
-       NoParam            -> return $ FormElm (ftextarea tolook  nvalue)  Nothing
+       Validated x        -> do addSData (ftextarea tolook  $ toJSString x :: Perch); return $ Just x
+       NotValidated s err -> do addSData (ftextarea tolook   (toJSString s) :: Perch); return  Nothing
+       NoParam            -> do setSData WasParallel;addSData (ftextarea tolook  $ toJSString nvalue :: Perch); return  Nothing
     where
-    typef :: View v m String -> StateT MFlowState m (ParamResult v a)
+    typef :: TransIO String -> StateIO (ParamResult Perch String)
     typef = undefined
 
 -- | A synonim of getMultilineText
-textArea :: (FormInput view
-                 ,  MonadIO m)
-                   => JSString
-                 ->  View view m String
+textArea ::  JSString ->TransIO String
 textArea= getMultilineText
 
-deriving instance Typeable JSRef
 
-instance Show JSString where show= fromJSString
 
-getBool :: (FormInput view,
-      MonadIO m, Monad (View view m), Functor m) =>
-      Bool -> String -> String -> View view m Bool
+getBool :: Bool -> String -> String -> TransIO Bool
 getBool mv truestr falsestr= do
    r <- getSelect $   setOption truestr (fromStr $ toJSString truestr)  <! (if mv then [("selected","true")] else [])
                   <|> setOption falsestr(fromStr $ toJSString falsestr) <! if not mv then [("selected","true")] else []
@@ -760,99 +545,92 @@ getBool mv truestr falsestr= do
 
 -- | Display a dropdown box with the options in the first parameter is optionally selected
 -- . It returns the selected option.
-getSelect :: (FormInput view,
-      MonadIO m,Typeable a, Read a) =>
-      View view m (MFOption a) ->  View view m  a
+getSelect :: (Typeable a, Read a,Show a) =>
+      TransIO (MFOption a) ->  TransIO  a
 getSelect opts = res where
-  res= View $ do
+  res= Transient $ do
     tolook <- genNewId
     st <- get
-    put st{needForm= HasElems}
+--    setSessionData HasElems
     r <- getParam1 tolook `asTypeOf` typef res
 --    setSessionData $ fmap MFOption $ valToMaybe r
-    FormElm form mr <- (runView opts)
+    runView $ fselect tolook <<< opts
 --
-    return $ FormElm (fselect tolook  form)  $ valToMaybe r
+    return $ valToMaybe r
 
     where
-    typef :: View v m a -> StateT MFlowState m (ParamResult v a)
+    typef :: TransIO a -> StateIO (ParamResult Perch a)
     typef = undefined
 
 newtype MFOption a= MFOption a deriving Typeable
 
-instance (FormInput view,Monad m, Functor m) => Monoid (View view m (MFOption a)) where
+instance  Monoid (TransIO (MFOption a)) where
   mappend =  (<|>)
   mempty = Control.Applicative.empty
 
 -- | Set the option for getSelect. Options are concatenated with `<|>`
 setOption
-  :: (Monad m, Monad (View view m), Show a, Eq a, Typeable a, FormInput view) =>
-     a -> view -> View view m (MFOption a)
-setOption n v = View $ do
---  mo <- getSessionData
-  runView $ setOption1 n v False
+  :: (Show a, Eq a, Typeable a) =>
+     a -> Perch -> TransIO (MFOption a)
+setOption n v = setOption1 n v False
 
 
 -- | Set the selected option for getSelect. Options are concatenated with `<|>`
 setSelectedOption
-  :: (Monad m, Monad(View view m), Show a, Eq a, Typeable a, FormInput view) =>
-     a -> view -> View view m (MFOption a)
-setSelectedOption n v= View $ do
---  mo <- getSessionData
-  runView $ setOption1 n v True
---   Just Nothing -> setOption1 n v True
---   Just (Just o) -> setOption1 n v $   n == o
+  :: (Show a, Eq a, Typeable a) =>
+     a -> Perch -> TransIO (MFOption a)
+setSelectedOption n v= setOption1 n v True
 
 
-setOption1 :: (FormInput view,
-      Monad m, Typeable a, Eq a, Show a) =>
-      a -> view -> Bool ->  View view m  (MFOption a)
-setOption1 nam  val check= View $ do
+setOption1 :: (Typeable a, Eq a, Show a) =>
+      a -> Perch -> Bool ->  TransIO  (MFOption a)
+setOption1 nam  val check= Transient $ do
     let n = if typeOf nam == typeOf(undefined :: String)
                    then unsafeCoerce nam
                    else show nam
 
-    return . FormElm (foption (toJSString n) val check)  . Just $ MFOption nam
+    addSData (foption (toJSString n) val check)
+
+    return  Nothing -- (Just $ MFOption nam)
 
 
-wlabel
-  :: (Monad m, FormInput view) => view -> View view m a -> View view m a
-wlabel str w =View $ do
+wlabel:: Perch -> TransIO a -> TransIO a
+wlabel str w =Transient $ do
    id <- getNextId
-   FormElm render mx <- runView w
-   return $ FormElm (ftag "label" str `attrs` [("for",id)] <> render) mx
+   runView $ (ftag "label" str `attrs` [("for",id)] :: Perch) ++> w
+
 
 
 -- passive reset button.
-resetButton :: (FormInput view, Monad m) => JSString -> View view m ()
-resetButton label= View $ return $ FormElm (finput  "reset" "reset" label False Nothing)
-                        $ Just ()
+resetButton :: JSString -> TransIO ()
+resetButton label= Transient $ do
+   addSData  (finput  "reset" "reset" label False Nothing :: Perch)
+   return $ Just ()
 
-inputReset :: (FormInput view, Monad m) => JSString -> View view m ()
+inputReset :: JSString -> TransIO ()
 inputReset= resetButton
 
 -- passive submit button. Submit a form, but it is not trigger any event.
--- Unless you attach it with `trigger`
-submitButton :: (Monad (View view m),StateType (View view m) ~ MFlowState,FormInput view, MonadIO m) => String -> View view m String
-submitButton label=  getParam Nothing "submit" $ Just label
+-- Unless you attach it with `raiseEvent`
+submitButton ::  (Read a, Show a, Typeable a) => a -> TransIO a
+submitButton label=  getParam  "submit" $ Just label
 
 
-inputSubmit :: (Monad (View view m),StateType (View view m) ~ MFlowState,FormInput view, MonadIO m) => String -> View view m String
+
 inputSubmit= submitButton
 
 -- | active button. When clicked, return the first parameter
 wbutton :: a -> JSString -> Widget a
-wbutton x label= static $
-   let label'= toJSString label in do
+wbutton x label=
+    let label'= toJSString label in do
         input  ! atr "type" "submit" ! id   label' ! atr "value" label `pass` OnClick
         return x
       `continuePerch`  label'
 
+
 -- | when creating a complex widget with many tags, this call indentifies which tag will receive the attributes of the (!) operator.
 continuePerch :: Widget a -> ElemID -> Widget a
-continuePerch w eid= View $ do
-      FormElm f mx <- runView w
-      return $ FormElm (c f) mx
+continuePerch w eid=  c <<< w
       where
       c f =Perch $ \e' ->  do
          build f e'
@@ -863,34 +641,16 @@ continuePerch w eid= View $ do
 
 -- | Present a link. Return the first parameter when clicked
 wlink :: (Show a, Typeable a) => a -> Perch -> Widget a
-wlink x v= static $ do
-    (a ! href ( toJSString $ "#/"++show1 x)   $ v) `pass` OnClick
-    return x
+wlink x v=  do
+    (a ! href ( toJSString $ "#/"++show1 x)   $ v)  `pass` OnClick
+
+    return x            -- !!> "PASS"
 
    where
    show1 x | typeOf x== typeOf (undefined :: String) = unsafeCoerce x
            | otherwise= show x
 
 
-
-
--- | Concat a list of widgets of the same type, return a the first validated result
-firstOf :: (FormInput view, Monad m, Functor m)=> [View view m a]  -> View view m a
-firstOf xs= Prelude.foldl (<|>) noWidget xs
-
--- | from a list of widgets, it return the validated ones.
-manyOf :: (FormInput view, MonadIO m, Functor m)=> [View view m a]  -> View view m [a]
-manyOf xs=  (View $ do
-      forms <- mapM runView  xs
-      let vs  = mconcat $ Prelude.map (\(FormElm v _) ->   v) forms
-          res1= catMaybes $ Prelude.map (\(FormElm _ r) -> r) forms
-      return . FormElm vs $ Just res1)
-
--- | like manyOf, but does not validate if one or more of the widgets does not validate
-allOf xs= manyOf xs `validate` \rs ->
-      if length rs== length xs
-         then return Nothing
-         else return $ Just mempty
 
 -- | show something enclosed in the <pre> tag, so ASCII formatting chars are honored
 wprint :: ToElem a => a -> Widget ()
@@ -904,19 +664,23 @@ wprint = wraw . pre
 -- Most of the type errors in the DSL are due to the low priority of this operator.
 --
 
-(<<<) :: (Monad m,  Monoid view)
-          => (view ->view)
-         -> View view m a
-         -> View view m a
-(<<<) v form= View $ do
-  FormElm f mx <- runView form
-  return $ FormElm (v  f) mx
+(<<<) :: (Perch -> Perch)
+         -> TransIO a
+         -> TransIO a
+(<<<) v form= Transient $ do
+  rest <- getSessionData `onNothing` return noHtml
+  delSData rest
+  mx <- runView form
+  f <- getSessionData `onNothing` return noHtml
+  setSData $ rest <> v f
+  return mx
+
 
 
 infixr 5 <<<
 
 -- | A parameter application with lower priority than ($) and direct function application
-(<<) :: (t1 -> t) -> t1 -> t
+(<<) :: (Perch -> Perch) -> Perch -> Perch
 (<<) tag content= tag $ toElem content
 
 infixr 7 <<
@@ -927,13 +691,13 @@ infixr 7 <<
 -- @ getString "hi" <++ H1 << "hi there"@
 --
 -- It has a infix prority: @infixr 6@ higuer that '<<<' and most other operators
-(<++) :: (Monad m, Monoid v)
-      => View v m a
-      -> v
-      -> View v m a
-(<++) form v= View $ do
-  FormElm f mx <-  runView  form
-  return $  FormElm ( f <> v) mx
+(<++) :: TransIO a
+      -> Perch
+      -> TransIO a
+(<++) form v= Transient $ do
+  mx <-  runView  form
+  addSData v
+  return mx
 
 infixr 6  ++>
 infixr 6 <++
@@ -942,12 +706,12 @@ infixr 6 <++
 -- @bold << "enter name" ++> getString Nothing @
 --
 -- It has a infix prority: @infixr 6@ higuer that '<<<' and most other operators
-(++>) :: (Monad m,  Monoid view)
-       => view -> View view m a -> View view m a
-html ++> w =  --  (html <>) <<< digest
- View $ do
-  FormElm f mx <- runView w
-  return $ FormElm (html  <>  f) mx
+(++>) :: Perch -> TransIO a -> TransIO a
+html ++> w =
+  Transient $ do
+      addSData html
+      runView w
+
 
 
 
@@ -955,47 +719,44 @@ html ++> w =  --  (html <>) <<< digest
 --
 -- it has a fixity @infix 8@
 infixl 8 <!
-widget <! attribs= View $ do
-      FormElm fs  mx <- runView widget
-      return $ FormElm  (fs `attrs` attribs) mx -- (head fs `attrs` attribs:tail fs) mx
---      case fs of
---        [hfs] -> return $ FormElm  [hfs `attrs` attribs] mx
---        _ -> error $ "operator <! : malformed widget: "++ concatMap (unpack. toByteString) fs
-
+widget <! attribs= Transient $ do
+      rest <- getSessionData `onNothing` return mempty
+      delSData rest
+      mx <- runView widget
+      fs <- getSessionData `onNothing` return mempty
+      setSessionData  $ rest <> (fs `attrs` attribs :: Perch)
+      return mx
 
 
 instance  Attributable (Widget a) where
- (!) widget atrib = View $ do
-      FormElm fs  mx <- runView widget
-      return $ FormElm  (fs `attr` atrib) mx
+ (!) widget atrib = widget <! [atrib]
 
 
 
 -- | Empty widget that does not validate. May be used as \"empty boxes\" inside larger widgets.
 --
 -- It returns a non valid value.
-noWidget ::  (FormInput view,
-     Monad m, Functor m) =>
-     View view m a
+noWidget  :: TransIO a
 noWidget= Control.Applicative.empty
 
 -- | a sinonym of noWidget that can be used in a monadic expression in the View monad. it stop the
 -- computation in the Widget monad.
-stop :: (FormInput view,
-     Monad m, Functor m) =>
-     View view m a
+stop :: TransIO a
 stop= Control.Applicative.empty
 
 
 -- | Render raw view formatting. It is useful for displaying information.
 wraw ::  Perch -> Widget ()
-wraw x= View . return . FormElm x $ Just ()
+wraw x=  x ++> return ()
+
+-- |  wraw synonym
+rawHtml= wraw
 
 -- | True if the widget has no valid input
 isEmpty :: Widget a -> Widget Bool
-isEmpty w= View $ do
-  FormElm r mv <- runView w
-  return $ FormElm r $ Just $ isNothing mv
+isEmpty w= Transient $ do
+  mv <- runView w
+  return $ Just $ isNothing mv
 
 
 -------------------------
@@ -1033,225 +794,315 @@ instance   FormInput Perch  where
 
     flink  v str = ftag "a" mempty `attrs` [("href",  v)] `child` str
 
--- | Get the session data of the desired type if there is any.
-getSessionData ::  (StateType m ~ MFlowState,MonadState m,Typeable a) =>  m (Maybe a)
-getSessionData =  resp where
- resp= gets mfData >>= \list  ->
-    case M.lookup ( typeOf $ typeResp resp ) list of
-      Just x  -> return . Just $ unsafeCoerce x
-      Nothing -> return $ Nothing
- typeResp :: m (Maybe x) -> x
- typeResp= undefined
-
--- | getSessionData specialized for the View monad. if Nothing, the monadic computation
--- does not continue. getSData is a widget that does not validate when there is no data
---  of that type in the session.
-getSData :: Typeable a =>Widget  a
-getSData= View $ do
-    r <- getSessionData
-    return $ FormElm mempty r
-
--- | setSessionData ::  (StateType m ~ MFlowState, Typeable a) => a -> m ()
-setSessionData  x=
-  modify $ \st -> st{mfData= M.insert  (typeOf x ) (unsafeCoerce x) (mfData st)}
-
--- | a shorter name for setSessionData
-setSData ::  (StateType m ~ MFlowState, MonadState  m,Typeable a) => a -> m ()
-setSData= setSessionData
-
-delSessionData x=
-  modify $ \st -> st{mfData= M.delete (typeOf x ) (mfData st)}
-
-delSData :: (StateType m ~ MFlowState, MonadState  m,Typeable a) => a -> m ()
-delSData= delSessionData
 
 ---------------------------
 data EvData =  NoData | Click Int (Int, Int) | Mouse (Int, Int) | MouseOut | Key Int deriving (Show,Eq,Typeable)
-data EventData= EventData{ evName :: String, evData :: EvData} deriving (Show,Typeable)
-
---eventData :: MVar Dynamic
---eventData= unsafePerformIO . newMVar . toDyn $ EventData "OnLoad" NoData
-
-resetEventData :: (StateType m ~ MFlowState, MonadState  m) => m ()
-resetEventData=   modify $ \st -> st{ lastEvent= toDyn $ EventData "Onload" NoData}
 
 
-getEventData :: (Typeable a,  StateType m ~ MFlowState, MonadState  m) => m a
-getEventData = gets lastEvent >>= return . (flip fromDyn) (error "getEventData: event type not expected")
 
-setEventData ::  (Typeable a, StateType m ~ MFlowState, MonadState  m) => a-> m ()
-setEventData dat=  modify $ \st -> st{ lastEvent= toDyn dat}
 
-getMEventData :: (Typeable a, StateType m ~ MFlowState, MonadState  m) => m (Maybe a)
-getMEventData= gets lastEvent >>= return . fromDynamic
+resetEventData :: TransIO ()
+resetEventData= Transient $ do
+    setSData $ EventData "Onload" $ toDyn NoData
+    return $ Just ()            -- !!> "RESETEVENTDATA"
 
-setIOEventData :: Typeable a => a -> IO ()
-setIOEventData dat= do
-  st <- takeMVar globalState
-  putMVar globalState st{ lastEvent= toDyn dat}
 
+getEventData ::  TransIO EventData
+getEventData =  getSData <|> return  (EventData "Onload" $ toDyn NoData) -- (error "getEventData: event type not expected")
+
+setEventData ::   EventData -> TransIO ()
+setEventData =  setSData
 
 
 class IsEvent a where
    eventName :: a -> JSString
-   buildHandler :: Elem -> a  -> IO () -> IO()
+   buildHandler :: Elem -> a  ->(EventData -> IO()) -> IO()
 
+#ifdef ghcjs_HOST_OS
+foreign import javascript unsafe
+  "$1.addEventListener($2, $3,false);"
+  js_addEventListener :: Elem -> JSString -> Callback (JSVal -> IO ()) -> IO ()
+#else
+js_addEventListener= undefined
+#endif
 
-foreign import javascript unsafe  "$1.addEventListener($2,$3)"
-     addEvListener ::  Elem -> JSString -> JSFun (IO ()) -> IO ()
+data BrowserEvent= OnLoad | OnUnload | OnChange | OnFocus | OnMouseMove | OnMouseOver |
+ OnMouseOut | OnClick | OnDblClick | OnMouseDown | OnMouseUp | OnBlur |
+ OnKeyPress | OnKeyUp | OnKeyDown deriving Show
 
-data OnLoad= OnLoad
-instance  IsEvent  OnLoad    where
-  eventName= const "load"
+data EventData= EventData{ evName :: JSString, evData :: Dynamic} deriving (Show,Typeable)
+
+--data OnLoad= OnLoad
+instance  IsEvent  BrowserEvent  where
+--  data EData _= EventData{ evName :: JSString, evData :: EvData} deriving (Show,Typeable)
+  eventName e =
+#ifdef ghcjs_HOST_OS
+    JS.toLower $ JS.drop 2 (toJSString $ show e) -- const "load"
+#else
+    ""
+#endif
   buildHandler elem e io = do
-      syncCallback NeverRetain False (setDat io (EventData (nevent e) NoData) )
-      >>=  addEvListener elem (eventName e)
-      
-data OnUnload = OnUnLoas
-instance  IsEvent  OnUnload   where
-  eventName= const "unload"
-  buildHandler elem e io =  syncCallback NeverRetain False   (setDat io $ EventData (nevent e) NoData)
-                            >>=  addEvListener elem (eventName e) 
-data OnChange= OnChange
-instance  IsEvent  OnChange   where
-  eventName= const "change"
-  buildHandler elem e io=  syncCallback NeverRetain False  (setDat io $ EventData (nevent e) NoData)
-                           >>=  addEvListener elem (eventName e) 
-data OnFocus= OnFocus
-instance  IsEvent  OnFocus   where
-  eventName= const "focus"
-  buildHandler elem e io=  syncCallback NeverRetain False  (setDat io $ EventData (nevent e) NoData)
-                            >>= addEvListener elem (eventName e)
-      
-data OnBlur= OnBlur
-instance  IsEvent  OnBlur   where
-  eventName= const "blur"
+    case e of
+     OnLoad -> do
+      cb <- syncCallback1 ContinueAsync (const $ setDat elem (io
+                                           (EventData (eventName e) $ toDyn NoData)) )
+      js_addEventListener elem (eventName e) cb
 
-data OnMouseMove= OnMouseMove
-instance  IsEvent  OnMouseMove  where
-  eventName= const "mousemove"
-  buildHandler elem e io= syncCallback1 NeverRetain False (\r -> let Just (x,y)=fromJSRef r in  (setDat io $ EventData (nevent e) $ Mouse(x,y)))
-                            >>= addEvListener elem (eventName e)
-      
-data OnMouseOver= OnMouseOver
-instance  IsEvent  OnMouseOver  where
-  eventName= const "mouseover"
-  buildHandler elem e io=  syncCallback1 NeverRetain False (\r -> let Just (x,y)=fromJSRef r in (setDat io $  EventData (nevent e) $ Mouse(x,y)))
-                            >>= addEvListener elem (eventName e)
-      
-data OnMouseOut= OnMouseOut
-instance  IsEvent  OnMouseOut   where
-  eventName= const "mouseout"
-  buildHandler elem e io= syncCallback NeverRetain False (setDat io $  EventData (nevent e) $ MouseOut)
-      >>= addEvListener elem (eventName e)
-      
-data OnClick= OnClick
-instance  IsEvent  OnClick      where
-  eventName= const "click"
-  buildHandler elem e io= syncCallback2 NeverRetain False $ \r1 r2 -> do
-      let Just i= fromJSRef r1
-          Just (x,y)= fromJSRef r2
-      setDat io $  EventData (nevent e) $ Click i (x,y)
-      addEvListener elem (eventName e)
-      
-data OnDblClick= OnDblClick
-instance  IsEvent  OnDblClick   where
-  eventName= const "dblclick"
-  buildHandler elem e io= syncCallback2 NeverRetain False $ \r1 r2 -> do
-      let Just i= fromJSRef r1
-          Just (x,y)= fromJSRef r2
-      setDat io $  EventData (nevent e) $ Click i (x,y)
-      addEvListener elem (eventName e)
+--data OnUnload = OnUnLoad
+--instance  IsEvent  OnUnload   where
+--  eventName= const "unload"
+--  buildHandler elem e io = do
+     OnUnload -> do
+      cb <- syncCallback1 ContinueAsync (const $ setDat elem  $ io
+                                           (EventData (eventName e) $ toDyn NoData) )
+      js_addEventListener elem (eventName e) cb
+--data OnChange= OnChange
+--instance  IsEvent  OnChange   where
+--  eventName= const "onchange"
+--  buildHandler elem e io = do
+     OnChange -> do
+      cb <- syncCallback1 ContinueAsync (const $ setDat elem $ io
+                                           (EventData (eventName e) $ toDyn NoData) )
+      js_addEventListener elem (eventName e) cb
 
-      
-data OnMouseDown= OnMouseDown
-instance  IsEvent  OnMouseDown  where
-  eventName= const "mousedowm"
-  buildHandler elem e io= syncCallback2 NeverRetain False $ \r1 r2 -> do
-      let Just i= fromJSRef r1
-          Just (x,y)= fromJSRef r2
-      setDat io $  EventData (nevent e) $ Click i (x,y)
-      addEvListener elem (eventName e)
+--data OnFocus= OnFocus
+--instance  IsEvent  OnFocus   where
+--  eventName= const "focus"
+--  buildHandler elem e io = do
+     OnFocus -> do
+      cb <- syncCallback1 ContinueAsync (const $ setDat elem $ io
+                                           (EventData (eventName e) $ toDyn NoData) )
+      js_addEventListener elem (eventName e) cb
 
-      
-data OnMouseUp= OnMouseUp
-instance  IsEvent  OnMouseUp    where
-  eventName= const "mouseup"
-  buildHandler elem e io= syncCallback2 NeverRetain False $ \r1 r2 -> do
-      let Just i= fromJSRef r1
-          Just (x,y)= fromJSRef r2
-      setDat io $  EventData (nevent e) $ Click i (x,y)
-      addEvListener elem (eventName e)
+--data OnBlur= OnBlur
+--instance  IsEvent  OnBlur   where
+--  eventName= const "blur"
+--  buildHandler elem e io = do
+     OnBlur -> do
+       cb <- syncCallback1 ContinueAsync (const $ setDat elem $ io
+                                           (EventData (eventName e)$ toDyn NoData) )
+       js_addEventListener elem (eventName e) cb
 
-      
-data OnKeyPress= OnKeyPress
-instance  IsEvent  OnKeyPress  where
-  eventName= const "keypress"
-  buildHandler elem e io = syncCallback1 NeverRetain False (\r -> letJust i= formJSRef r in  (setDat io $ EventData (nevent e) $ Key i))
-      >>= addEvListener elem (eventName e)
-      
-data OnKeyUp= OnKeyUp
-instance  IsEvent OnKeyUp    where
-  eventName= const "keyup"
-  buildHandler elem e io = syncCallback NeverRetain False (\r -> letJust i= formJSRef r in  (setDat io $ EventData (nevent e) $ Key i))
-      >>= addEvListener elem (eventName e)
-      
-data OnKeyDown= OnKeyDown
-instance  IsEvent  OnKeyDown   where
-  eventName= const "keydown"
-  buildHandler elem e io = syncCallback1 NeverRetain False (\r -> letJust i= formJSRef r in  (setDat io $ EventData (nevent e) $ Key i))
-      >>= addEvListener elem (eventName e)
-      
+--data OnMouseMove= OnMouseMove Int Int
+--instance  IsEvent  OnMouseMove  where
+--  eventName= const "mousemove"
+--  buildHandler elem e io= do
+     OnMouseMove -> do
+       cb <- syncCallback1 ContinueAsync
+               (\r -> do
+                 (x,y) <-fromJSValUnchecked r
+                 stopPropagation r
+                 setDat elem $ io $  EventData (eventName e) $  toDyn $ Mouse(x,y))
+       js_addEventListener elem (eventName e) cb
 
+--data OnMouseOver= OnMouseOver
+--instance  IsEvent  OnMouseOver  where
+--  eventName= const "mouseover"
+--  buildHandler elem e io= do
+     OnMouseOver -> do
+       cb <- syncCallback1 ContinueAsync
+                (\r -> do
+                 (x,y) <-fromJSValUnchecked r
+                 stopPropagation r
+                 setDat elem $ io $ EventData (nevent e) $ toDyn $  Mouse(x,y))
+       js_addEventListener elem (eventName e) cb
 
-nevent e= fromJSString $ eventName e
+--data OnMouseOut= OnMouseOut
+--instance  IsEvent  OnMouseOut   where
+--  eventName= const "mouseout"
+--  buildHandler elem e io = do
+     OnMouseOut -> do
+      cb <- syncCallback1 ContinueAsync (const $ setDat elem $ io
+                                           (EventData (nevent e) $ toDyn $  NoData) )
+      js_addEventListener elem (eventName e) cb
 
---setDat :: EventData -> m ()
-setDat iohandler d =  unsafeCoerce $ do
-            setIOEventData d
-            iohandler
-
-
-
-
--- | triggers the event when it happens in the widget.
+--data OnClick= OnClick
 --
--- What happens then?
+--instance  IsEvent  OnClick      where
+--  eventName= const "click"
+--  buildHandler elem e io= do
+     OnClick -> do
+      cb <- syncCallback1 ContinueAsync  $ \r -> do
+          (i,x,y)<- fromJSValUnchecked r
+          stopPropagation r
+          setDat elem $ io $   EventData (nevent e) $ toDyn $  Click i (x,y)
+      js_addEventListener elem (eventName e) cb
+
+--data OnDblClick= OnDblClick
+--instance  IsEvent  OnDblClick   where
+--  eventName= const "dblclick"
+--  buildHandler elem e io= do
+     OnDblClick -> do
+      cb <- syncCallback1 ContinueAsync  $ \r -> do
+          (i,x,y)<- fromJSValUnchecked r
+          stopPropagation r
+          setDat elem $ io $   EventData (nevent e) $ toDyn $  Click i (x,y)
+      js_addEventListener elem (eventName e) cb
+
 --
--- 1)The event reexecutes all the monadic sentence where the widget is, (with no re-rendering)
+--data OnMouseDown= OnMouseDown
+--instance  IsEvent  OnMouseDown  where
+--  eventName= const "mousedowm"
+--  buildHandler elem e io= do
+     OnMouseDown -> do
+      cb <- syncCallback1 ContinueAsync $ \r -> do
+          (i,x,y)<- fromJSValUnchecked r
+          stopPropagation r
+          setDat elem  $ io $   EventData (nevent e) $ toDyn $  Click i (x,y)
+      js_addEventListener elem (eventName e) cb
+
+
+--data OnMouseUp= OnMouseUp
+--instance  IsEvent  OnMouseUp    where
+--  eventName= const "mouseup"
+--  buildHandler elem e io= do
+     OnMouseUp -> do
+      cb <- syncCallback1 ContinueAsync $ \r -> do
+          (i,x,y)<- fromJSValUnchecked r
+          stopPropagation r
+          setDat elem $ io $   EventData (nevent e) $ toDyn $  Click i (x,y)
+      js_addEventListener elem (eventName e) cb
+
+
+--data OnKeyPress= OnKeyPress
+--instance  IsEvent  OnKeyPress  where
+--  eventName= const "keypress"
+--  buildHandler elem e io = do
+     OnKeyPress -> do
+      cb <- syncCallback1 ContinueAsync $ \r -> do
+            i <-  fromJSValUnchecked r
+            stopPropagation r
+            setDat elem  $ io $  EventData (nevent e) $ toDyn $  Key i
+      js_addEventListener elem (eventName e) cb
+
+--data OnKeyUp= OnKeyUp
+--instance  IsEvent OnKeyUp    where
+--  eventName= const "keyup"
+--  buildHandler elem e io = do
+     OnKeyUp -> do
+      cb <- syncCallback1 ContinueAsync $ \r -> do
+            i <-  fromJSValUnchecked r
+            stopPropagation r
+            setDat elem  $ io $ EventData (nevent e) $ toDyn $  Key i
+      js_addEventListener elem (eventName e) cb
+
+--data OnKeyDown= OnKeyDown
+--instance  IsEvent  OnKeyDown   where
+--  eventName= const "keydown"
+--  buildHandler elem e io = do
+     OnKeyDown -> do
+      cb <- syncCallback1 ContinueAsync $ \r -> do
+            i <-  fromJSValUnchecked r
+            stopPropagation r
+            setDat elem $ io $  EventData (nevent e) $ toDyn $ Key i
+      js_addEventListener elem (eventName e) cb
+
+   where
+
+
+   nevent =  eventName
+
+   setDat ::  Elem -> IO()  -> IO ()
+   setDat elem action  = do
+         action            -- !!> "begin action"
+         return ()            -- !!> "end action"
+
+
+
+viewEffects :: Effects
+viewEffects x _ f= do
+--     i <- genId
+--     let id1 = toJSString $ "s"++ show i
+     id1 <- genNewId
+     st <- get
+
+     (t, mx) <- baseEffects  x  (strip st x)  (\x -> runWidgetId' (f x) id1)
+
+     return (\x -> (add  (span ! id id1) x ), mx)
+
+add  v form= do
+     rest <- getSessionData `onNothing` return noHtml
+     delSData rest
+     mx <-  form
+     f <- getSessionData `onNothing` return noHtml
+     setSData $ rest <>   v f
+     return mx
+
+#ifdef ghcjs_HOST_OS
+foreign import javascript unsafe
+  "var p=$1.parentNode;while ($1.nextSibling)p.removeChild($1.nextSibling);p.removeChild($1)"
+  removeNextSibling :: Elem -> IO ()
+#else
+removeNextSibling = undefined
+#endif
+
+
+static mx= Transient $ do
+     prev <- gets effects
+     modify $ \ s-> s{effects=  baseEffects}
+     x <- runTrans mx
+     modify $ \ s-> s{effects= unsafeCoerce prev}
+     return x
+
+
+strip st x= Transient $ do
+--    old <- getSessionData `onNothing` return noHtml
+    st' <- get
+    put st'{mfSequence= mfSequence st}
+    mx <- runView x
+    put st'
+    delSData noHtml
+    return  mx
+
+addSData :: (MonadState EventF m,Typeable a ,Monoid a) => a -> m ()
+addSData y= do
+  x <- getSessionData `onNothing` return  mempty
+  setSessionData (x <> y)
+
+
+
+
+-- | triggers the event that happens in a widget. The effects are the following:
 --
--- 2) with the result of this reevaluaution, executes the rest of the monadic computation
+-- 1)The event reexecutes the monadic sentence where the widget is, (with no re-rendering)
 --
--- 3) update the DOM tree with the rendering of the reevaluation in 2).
+-- 2) with the result of this reevaluaution of 1), the rest of the monadic computation is executed
 --
--- As usual, If one step of the monadic computation return empty, the reevaluation finish
+-- 3) update the DOM tree with the rendering generated by the reevaluation of 2).
+--
+-- As usual, If one step of the monadic computation return `empty` (`stop`), the reevaluation finish
 -- So the effect of an event can be restricted as much as you may need.
 --
--- Neither the computation nor the tree in the upstream flow is touched.
--- (unless you use out of stream directives, like `at`)
---
--- monadic computations inside monadic computations are executed following recursively
--- the steps mentioned above. So an event in a component deep down could or could not
--- trigger the reexecution of the rest of the whole.
+-- The part of the monadic expression that is before the event is not evaluated and his rendering is untouched.
+-- (but, at any moment, you can choose the element to be updated in the page using `at`)
+
 raiseEvent ::  IsEvent event  => Widget a -> event -> Widget a
-raiseEvent w event = View $ do
-   cont <- getCont
-   FormElm render mx <- runView  w
-   let iohandler = runCont cont
-       nevent = eventName event
+raiseEvent w event = do
+   r <- Transient $ do
+       cont <- get   >>= \c -> return c{mfSequence= mfSequence c -1}
+       let iohandler :: EventData -> IO ()
+           iohandler eventdata =do
 
-       render' = addEvent' (render :: Perch) event iohandler
-
-   return $ FormElm render' mx
+                runStateT (setSData eventdata >> runCont cont) cont        -- !!> "runCont INIT"
+                return ()                                             -- !!> "runCont finished"
+       runView $  addEvent event iohandler <<< w
+   return r
    where
-   -- | create an element and add any event handler to it.
-   -- This is a generalized version of addEvent
-   addEvent' :: IsEvent a b => Perch -> a -> IO() -> Perch
-   addEvent' be eevent iohandler= Perch $ \e -> do
-        e' <- build be e
-        let event= eventName eevent
-        buildHandler e' eevent iohandler
-        return e'
+       -- create an element and add any event handler to it.
+       addEvent :: IsEvent a =>  a -> (EventData -> IO()) -> Perch -> Perch
+       addEvent event iohandler be= Perch $ \e -> do
+            e' <- build (span ! atr "name" "event" $ be) e
+            buildHandler e' event iohandler
+            return e'
+
+#ifdef ghcjs_HOST_OS
+foreign import javascript unsafe
+  "$1.stopPropagation()"
+  stopPropagation :: JSVal -> IO ()
+#else
+stopPropagation= undefined
+#endif
+
 
 -- | A shorter synonym for `raiseEvent`
 fire ::   IsEvent event => Widget a -> event -> Widget a
@@ -1268,11 +1119,11 @@ react = raiseEvent
 -- | pass trough only if the event is fired in this DOM element.
 -- Otherwise, if the code is executing from a previous event, the computation will stop
 pass :: IsEvent event => Perch -> event -> Widget EventData
-pass v event= static $ do
+pass v event= do
         resetEventData
-        wraw v `wake` event
-        e@(EventData typ _) <- getEventData
-        continueIf (eventName event== typ) e
+        wraw v `wake` event              -- !!> "WAKE"
+        e@(EventData typ _) <- getEventData              -- !!> "GETEVENTDATA"
+        continueIf (eventName event== typ) e             -- !!> show(eventName event== typ)
 
 -- | return empty and the monadic computation stop if the condition is false.
 -- If true, return the second parameter.
@@ -1280,83 +1131,70 @@ continueIf :: Bool -> a -> Widget a
 continueIf True x  = return x
 continueIf False _ = empty
 
--- | executes a widget each t milliseconds until it validates and return ()
-wtimeout :: Int -> Widget () -> Widget ()
-wtimeout t w= View $ do
-    id <- genNewId
-    let f= do
-        me <- elemById  id
-        case me of
-         Nothing -> return ()
-         Just e ->do
-            r <- clearChildren e >> runWidget w e
-            case r of
-              Nothing -> f
-              Just ()  -> return ()
-
-    handler <- syncCallback NeverRetain  False
-    
-    let f= setTimeout t handler
-    liftIO  f
-    runView $ identified id w
-
-foreign import javascript unsafe  "document.querySelectorAll($1)" setTimeout ::  Int ->  IO()
-
--- getting and running continuations
-
-getCont ::(StateType m ~ MFlowState, MonadState  m) => m EventF
-getCont = gets process
+---- | executes a widget each t milliseconds until it validates and return ()
+--wtimeout :: Int -> Widget () -> Widget ()
+--wtimeout t w= Transient $ do
+--    id <- genNewId
+--    let f= do
+--        me <- elemById  id
+--        case me of
+--         Nothing -> return ()
+--         Just e ->do
+--            r <- clearChildren e >> runWidget w e
+--            case r of
+--              Nothing -> f
+--              Just ()  -> return ()
+--
+--    handler <- syncCallback ContinueAsync f
+--
+--    let f= setTimeout t handler
+--    liftIO  f
+--    FormElm f mx <- runView $ identified id w
+--    returnFormElm f mx
+--
 
 
-runCont :: EventF -> IO()
-runCont (EventF x  fs)= x `bind` fs  >> return ()
-
-
-bind :: IO (Maybe a) -> (a -> IO (Maybe  b)) -> IO (Maybe b)
-bind x  f= do
-   mr <- x
-   case mr of
-     Just r -> f r
-     Nothing -> return Nothing
-
---bind x f = View $ do
---    FormElm form1 mk <- runView x
---    case mk of
---      Just k  -> do
---         FormElm form2 mk <- runView $ f k
---         return $ FormElm (form1 <> form2) mk
---      Nothing ->
---         return $ FormElm  form1  Nothing
-
-globalState= unsafePerformIO $ newMVar mFlowState0
-
--- | run the widget as the content of a DOM element, the id is passed as parameter. All the
--- content of the element is erased previously and it is substituted by the new rendering
-runWidgetId :: Widget b -> ElemID  -> IO (Maybe b)
-runWidgetId ac id =  do
-   me <- elemById id
+runWidgetId' :: Widget b -> ElemID  -> TransIO b
+runWidgetId' ac id1= Transient  runWidget1
+ where
+ runWidget1 = do
+   me <- liftIO $ elemById id1            -- !!> ("RUNWIDGETID " ++ show id1)
    case me of
      Just e ->  do
-      clearChildren e
-      runWidget ac e
-     Nothing -> do
-          st <- unsafeCoerce $ takeMVar globalState
-          (FormElm render mx, s) <- runStateT (runView ac) st
-          liftIO $ putMVar globalState s
-          return mx
+
+          runTrans $ runWidget' ac e       -- !!> show ("found",id1)
+
+
+     Nothing -> -- runTrans ac !!> ( "ID NOT FOUND " ++ show id) -- runTrans ac
+         do
+            body <- liftIO  getBody             -- !!> ( "ID NOT FOUND " ++ show id1)
+            liftIO $ build (span ! id id1 $ noHtml) body
+
+            runWidget1
+--            runTrans $ runWidget'  (  id1 <<<  ac) body
+
 
 
 -- | run the widget as the content of a DOM element
 -- the new rendering is added to the element
 runWidget :: Widget b -> Elem  -> IO (Maybe b)
 runWidget action e = do
-     st <- takeMVar globalState
-     (FormElm render mx, s) <- runStateT (runView action) st
-     liftIO $ putMVar globalState s
-     build render e
+     (mx, s) <- runTransient $ runWidget' action e
      return mx
 
 
+runWidget' :: Widget b -> Elem   -> TransIO b
+runWidget' action e  = Transient $ do
+
+      setSData (IdLine e)
+--      modify $ \s -> s{effects= viewEffects}
+      mx <- runView action
+      render <- getSessionData `onNothing` (return  noHtml)
+      liftIO $ clearChildren e
+      e' <- liftIO $ build render e
+      setSData (IdLine e')
+      delSessionData render
+      return mx
 
 -- | add a header in the <header> tag
 addHeader :: Perch -> IO ()
@@ -1365,149 +1203,95 @@ addHeader format= do
     build format head
     return ()
 
+#ifdef ghcjs_HOST_OS
 foreign import javascript unsafe "document.head" getHead :: IO Elem
-
-
+#else
+getHead= undefined
+#endif
 
 -- | run the widget as the body of the HTML
 runBody :: Widget a -> IO (Maybe a)
 runBody w= do
   body <- getBody
-  (flip runWidget) body w
+  runWidget  w body
+
+
+
+-- | use this instead of `Transient.Base.keep` when runing in the browser
+keep mx= do
+
+   runTransient mx
+
+-- | use this instead of `Transient.Base.keep` when runing in the browser
+keep'= keep
+
+-- | use this instead of `Transient.Move.runCloud` when running in the browser
+runCloud (Cloud mx)= keep  mx
+
+newtype IdLine= IdLine Elem
+
+render :: Cloud a -> Cloud a
+#ifdef ghcjs_HOST_OS
+render  (Cloud mx) = Cloud $ do
+   modify $ \s -> s{effects= unsafeCoerce viewEffects}               -- !!> "RENDER"
+   me <- getSessionData
+   r <- case me of
+     Just (IdLine e) -> runWidget' mx e              --   !!> "YES IDLINE"
+     Nothing -> do
+        id1 <- Transient $ Just <$> genNewId
+        runWidgetId'  mx id1                         --  !!> "NO IDLINE"
+   modify $ \s -> s{effects= baseEffects}            --  !!> "end render"
+   return r
+#else
+render x= x
+#endif
+
+
+
+-- | use this instead of `Transient.Base.option` when runing in the browser
+option :: (Typeable b, Show b) =>  b -> String -> TransientIO b
+option x v=  wlink x (toElem v)<++ " "
+
 
 --foreign import javascript unsafe "document.body" getBody :: IO Elem
 
-
-foreign import javascript unsafe "$1.childNodes()" getChildren :: Elem -> IO (JSRef[Elem])
+#ifdef ghcjs_HOST_OS
+foreign import javascript unsafe "$1.childNodes()" getChildren :: Elem -> IO JSVal
 foreign import javascript unsafe "$2.insertBefore($1, $3)" addChildBefore :: Elem -> Elem -> Elem -> IO()
+#else
+getChildren :: Elem -> IO JSVal
+getChildren= undefined
+addChildBefore :: Elem -> Elem -> Elem -> IO()
+addChildBefore= undefined
+#endif
+
 data UpdateMethod= Append | Prepend | Insert deriving Show
 
 -- | Run the widget as the content of the element with the given id. The content can
 -- be appended, prepended to the previous content or it can be the only content depending on the
 -- update method.
 at ::  JSString -> UpdateMethod -> Widget a -> Widget  a
-at id method w= View $ do
- FormElm render mx <- (runView w)
- return $ FormElm  (set  render)  mx
+at id method w= set <<< w
  where
- set render = case method of
+ set :: Perch -> Perch
+ set render = liftIO $ case method of
      Insert -> do
-             forElems' id $ this clear <> render
+             forElems' id $ clear >> render
              return ()
      Append -> do
              forElems' id render
              return ()
      Prepend -> do
             forElems' id $ Perch $ \e -> do
-             es <- getChildren e
+             jsval <- getChildren e
+             es <- fromJSValUncheckedListOf jsval
              case es of
-               [] -> build render e >> return ()
-               e':_ -> do
-                     span <- newElem "span"
-                     addChildBefore span e e'
-                     build render span
-                     return()
-            return()
-
-
--- AJAX
-
-data Method = GET | POST deriving Show
-type URL= JSString
-
-responseAjax :: IORef [(String,Maybe JSString)]
-responseAjax = unsafePerformIO $ newIORef []
-
-class (FromJSString (Maybe a), ToJSString  a) => JSType a
-instance (FromJSString (Maybe a), ToJSString  a) => JSType a
-
--- | Invoke AJAX. 
--- `(a,b)` are the lists of parameters, a is normally `String` or `JSString`.
--- JSON is also supported for `b` and `c`. If you want to handle your data types, make a instance of
--- `JSType`
---
--- Note the de-inversion of control. There is no callback.
---
--- `ajax` can be combined with other Widgets using monadic, applicative or alternative combinators.
-ajax :: ( JSType a, JSType  b, JSType  c,Typeable c)
-     => Method -> URL -> [(a, b)] -> Widget (Maybe c)
-ajax method url kv= View $ do
-      id <- genNewId
-      rs <- liftIO $ readIORef responseAjax
-      case lookup id rs of
-        Just rec -> liftIO $ do
-               writeIORef responseAjax $ filter ((/= id). fst) rs
-
-               return $ FormElm  mempty $  fmap fromJSString rec
-        _ -> do
-              proc <- gets process
-              liftIO $ textRequest'  method url kv $ cb id proc
-              return $ FormElm mempty Nothing
-
-
-  where
-  -- cb :: String -> (Widget a) -> [(b -> Widget c,ElemID)] -> Maybe d -> IO()
-  cb id cont rec= do
-    responses <- readIORef responseAjax
-    liftIO $ writeIORef responseAjax $  (id, rec):responses
-    runCont cont
-    return ()
-
-
-textRequest' :: (JSType a, JSType b, JSType c)
-        => Method
-        -> URL
-        -> [(a, b)]
-        -> (Maybe c -> IO ())
-        -> IO ()
-textRequest' m url kv cb = do
-        _ <- ajaxReq (toJSString $ show m) url' True pd cb'     -- here postdata is ""
-        return ()
-        where
-        cb' = mkCallback $ cb . fmap fromJSS'
-        url' = case m of
-               GET -> if null kv then toJSString url else catJSStr (toJSString "?") [toJSString url, toQueryString kv]
-               POST -> toJSString url
-        pd = case m of
-               GET ->  toJSString ""
-               POST -> if null kv then  toJSString "" else toQueryString kv
-
-        fromJSS'= fromJust . fromJSString
-
-mkCallback cb= syncCallback   NeverRetain False  cb
-
-toQueryString :: (JSType a, JSType b) =>[(a, b)] -> JSString
-toQueryString = catJSStr (toJSString "&") . Prelude.map (\(k,v) -> catJSStr (toJSString "=") [toJSString k,toJSString v])
-
-foreign import javascript unsafe  "$1+$2" catJSStr  :: JSString -> JSString -> JSString
-
-    -- function ajaxReq(method, url, async, postdata, cb) {
-foreign import javascript unsafe
-    "var xhr = new XMLHttpRequest();\
-    \xhr.open($1, $2, $3);\
-    \if($1 == 'POST') {\
-        \xhr.setRequestHeader('Content-type',\
-                             \'application/x-www-form-urlencoded');\
-    \}\
-    \xhr.onreadystatechange = function() {\
-        \if(xhr.readyState == 4) {\
-            \if(xhr.status == 200) {\
-                \$5 xhr.responseText;\
-            \} else {\
-                 \$5 '';\
-            \}\
-        \}\
-    \}\
-    \xhr.send($4)"
-
-
-
-     ajaxReq :: JSString    -- method
-             -> JSString    -- url
-             -> Bool        -- async?
-             -> JSString    -- POST data
-             ->(JSFun (JSRef (Maybe JSString) -> IO ()))
-             -> IO ()
+                       [] -> build render e >> return e
+                       e':es -> do
+                             span <- newElem "span"
+                             addChildBefore span e e'
+                             build render span
+                             return e
 
 
 

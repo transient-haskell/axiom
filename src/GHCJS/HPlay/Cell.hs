@@ -11,8 +11,9 @@
 -- |
 --
 -----------------------------------------------------------------------------
-{-# LANGUAGE TypeSynonymInstances, FlexibleInstances #-}
+{-# LANGUAGE TypeSynonymInstances, FlexibleInstances, OverloadedStrings, CPP #-}
 module GHCJS.HPlay.Cell  where
+import Transient.Base
 import GHCJS.HPlay.View
 import Control.Monad.IO.Class
 import Data.Typeable
@@ -25,6 +26,10 @@ import Data.Maybe
 import Control.Exception
 import Data.List
 
+#ifdef ghcjs_HOST_OS
+import qualified Data.JSString as JS
+#endif
+
 data Cell  a = Cell { mk :: Maybe a -> Widget a
                     , setter ::  a -> IO ()
                     , getter ::  IO (Maybe a)}
@@ -33,13 +38,14 @@ data Cell  a = Cell { mk :: Maybe a -> Widget a
 --  fmap f cell = cell{setter= \c x ->  c .= f x, getter = \cell -> get cell >>= return . f}
 
 
+
 -- a box cell with polimorphic value, identified by a string
 boxCell :: (Show a, Read a, Typeable a) => ElemID -> Cell a
 boxCell id = Cell{ mk= \mv -> getParam (Just id) "text" mv
                  , setter= \x -> do
                           me <- elemById id
                           case me of
-                            Just e -> setProp e "value" (show1 x)
+                            Just e -> setProp e "value" (toJSString $ show1 x)
                             Nothing -> return ()
 
                  , getter= do
@@ -50,7 +56,7 @@ boxCell id = Cell{ mk= \mv -> getParam (Just id) "text" mv
     where
     getit= withElem id $ \e ->  getProp e "value" >>=  return . read1
     read1 s= if typeOf(typeIO getit) /= typestring
-               then case readsPrec 0 s  of
+               then case readsPrec 0 $ fromJSString s  of
                    [(v,_)] ->  Just v
                    _  -> Nothing
                else Just $ unsafeCoerce s
@@ -69,7 +75,7 @@ boxCell id = Cell{ mk= \mv -> getParam (Just id) "text" mv
 (.=) :: MonadIO m =>  Cell a -> a -> m ()
 (.=) cell x = liftIO $ (setter cell )  x
 
-get cell =  View $ liftIO $ getter cell >>= return . FormElm noHtml
+get cell =  Transient $ liftIO (getter cell)
 
 
 ---- |  a cell value assigned to other cell
@@ -121,16 +127,16 @@ gcell n= \vars -> case M.lookup n vars of
        else  error n
 
 
-
-type Expr a = M.Map String a -> a
+-- a parameter is a function of all of the rest parameters
+type Expr a = M.Map JS.JSString a -> a
 
 rtries= unsafePerformIO $ newIORef $ (0::Int)
 maxtries=  3* (M.size $ unsafePerformIO $ readIORef rexprs)
 
-rexprs :: IORef (M.Map String (Expr Float))
+rexprs :: IORef (M.Map JS.JSString (Expr Float))
 rexprs= unsafePerformIO $ newIORef M.empty
 
-rmodified :: IORef (M.Map String (Expr Float))
+rmodified :: IORef (M.Map JS.JSString (Expr Float))
 rmodified= unsafePerformIO $ newIORef M.empty
 
 
@@ -151,14 +157,14 @@ scell id  expr= Cell{ mk= \mv-> static $ do
 
 
 
-                 , setter= \x -> withElem id $ \e -> setProp e "value" (show1 x)
+                 , setter= \x -> withElem id $ \e -> setProp e "value" (toJSString $ show1 x)
 
                  , getter= getit}
     where
 
     getit= withElem id $ \e -> getProp e "value" >>= return . read1
     read1 s= if typeOf(typeIO getit) /= typeOf (undefined :: String)
-               then case readsPrec 0 s  of
+               then case readsPrec 0 $ fromJSString s  of
                    [(v,_)] ->  Just v
                    _  -> Nothing
                else unsafeCoerce s
@@ -179,12 +185,12 @@ calc= do
   liftIO $ writeIORef rmodified M.empty
   where
   -- http://blog.sigfpe.com/2006/11/from-l-theorem-to-spreadsheet.html
-   -- loeb ::  Functor f => f (t -> a) -> f a
-  loeb :: M.Map String (Expr a) -> M.Map String a
+  -- loeb ::  Functor f => f (t -> a) -> f a
+  loeb :: M.Map JS.JSString (Expr a) -> M.Map JS.JSString a
   loeb x = fmap (\a -> a (loeb  x)) x
 
-  calc1  :: IO [(String,Float)]
-  calc1=do
+  calc1  :: IO [(JS.JSString,Float)]
+  calc1= do
     writeIORef rtries 0
     cells <- liftIO $ readIORef rexprs
     nvs   <- liftIO $ readIORef rmodified
@@ -195,9 +201,9 @@ calc= do
 
   toStrict xs = print xs >> return xs
 
-  circular n= "loop detected in cell: "++ n  ++ " please fix the error"
+  circular n= "loop detected in cell: "++ show n  ++ " please fix the error"
 
-  doit :: SomeException -> IO [(String,Float)]
+  doit :: SomeException -> IO [(JS.JSString,Float)]
   doit e= do
     nvs <- readIORef rmodified
     exprs <- readIORef rexprs
@@ -205,7 +211,7 @@ calc= do
       [] -> do
          let Just (ErrorCall n)= fromException e
          let err= circular n
-         alert err
+         alert $ toJSString err
          error err
       (name:_) -> do
          mv <- getter $ boxCell name
@@ -215,9 +221,6 @@ calc= do
                 writeIORef rmodified  $ M.insert name (const v) nvs
                 calc1
 
-instance Show (Expr a)
-
-instance Eq (Expr a)
 
 instance (Num a,Eq a,Fractional a) =>Fractional (x -> a)where
      f / g = \x -> f x / g x
