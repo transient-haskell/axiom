@@ -613,7 +613,7 @@ submitButton ::  (Read a, Show a, Typeable a) => a -> TransIO a
 submitButton label=  getParam  "submit" $ Just label
 
 
-
+inputSubmit ::  (Read a, Show a, Typeable a) => a -> TransIO a
 inputSubmit= submitButton
 
 -- | active button. When clicked, return the first parameter
