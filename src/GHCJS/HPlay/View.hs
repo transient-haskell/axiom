@@ -14,8 +14,12 @@
 
 {-# LANGUAGE FlexibleContexts, FlexibleInstances,
   OverloadedStrings, DeriveDataTypeable, UndecidableInstances,
-  ExistentialQuantification, GeneralizedNewtypeDeriving,
-  NoMonomorphismRestriction, TypeFamilies, CPP #-}
+  ExistentialQuantification, GeneralizedNewtypeDeriving, CPP #-}
+
+#ifdef __GHCJS__
+{-# LANGUAGE JavaScriptFFI #-}
+#endif
+
 module GHCJS.HPlay.View(
 Widget,
 -- * re-exported
@@ -73,7 +77,6 @@ import Transient.Move (Cloud(..))
 import Control.Applicative
 import Data.Monoid
 
-import Control.Monad.IO.Class
 import Control.Monad.State
 
 import Data.Typeable
@@ -91,15 +94,13 @@ import Data.Dynamic
 
 import Control.Concurrent
 
-#ifdef ghcjs_HOST_OS
+#ifdef __GHCJS__
 import GHCJS.Types
 import GHCJS.Marshal
 import GHCJS.Foreign
 import GHCJS.Foreign.Callback -- as CB
 
 import Data.JSString as JS hiding (span,empty,strip)
-
-
 
 foreign import javascript unsafe  "$1[$2].toString()" getProp :: Elem -> JSString -> IO JSString
 foreign import javascript unsafe  "$1[$2]= $3" setProp :: Elem -> JSString -> JSString -> IO ()
@@ -195,10 +196,6 @@ wcallback x f= Transient $ do
              at nid Insert $ f r
 
 
-
-identified id w=  span ! atr "id" id <<< w
---     where
---     span1= span" ! ("id", id)
 
 
 
