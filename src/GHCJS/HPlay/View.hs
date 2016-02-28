@@ -1264,6 +1264,9 @@ addChildBefore= undefined
 
 data UpdateMethod= Append | Prepend | Insert deriving Show
 
+instance MonadIO PerchM where
+  liftIO io = Perch $ \e -> io >> return e
+
 -- | Run the widget as the content of the element with the given id. The content can
 -- be appended, prepended to the previous content or it can be the only content depending on the
 -- update method.
