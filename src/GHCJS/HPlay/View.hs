@@ -27,9 +27,8 @@ module Control.Applicative,
 
 -- * widget combinators and modifiers
 
-(**>), (<**), validate
+ (<**), validate
 ,(<<<),(<<),(<++),(++>),(<!)
-,static, strip
 ,wcallback
 
 -- * basic widgets
@@ -53,10 +52,10 @@ BrowserEvent(..)
 -- * reactive and events
 ,resetEventData,getEventData, setEventData, IsEvent(..), EventData(..),EvData(..)
 ,raiseEvent, fire, wake, pass
-,continueIf, IdLine(..)
+,continueIf
 
 -- * running it
-,keep, keep', runCloud
+, runCloud, GHCJS.HPlay.View.teleport
 ,runWidget,runWidgetId', runBody, addHeader, render
 
 -- * Perch is reexported
@@ -69,11 +68,11 @@ BrowserEvent(..)
 ,FormInput(..),
 
 ElemID, elemById,withElem,getProp,setProp, alert,
-fromJSString, toJSString,
-viewEffects
+fromJSString, toJSString
 )  where
 import Transient.Base hiding (input,option,keep, keep',runCloud)
-import Transient.Move (Cloud(..))
+import Transient.Move as TL (Cloud(..),copyData,local, onAll,teleport)
+
 import Control.Applicative
 import Data.Monoid
 
@@ -155,7 +154,7 @@ elemById id= liftIO $ do
    re <- elemByIdDOM id
    fromJSVal re
 #else
-elemById= undefined
+elemById _= return Nothing
 #endif
 
 withElem :: ElemID -> (Elem -> IO a) -> IO a
@@ -252,12 +251,12 @@ fromValidated (NotValidated s err)= error $ "fromValidated: NotValidated "++ s
 getParam1 :: ( Typeable a, Read a, Show a)
           => JSString ->  StateIO (ParamResult Perch a)
 getParam1 par = do
-   me <- elemById par             -- !!> ("looking for " ++ show par)
+   me <- elemById par                         -- !!> ("looking for " ++ show par)
    case me of
      Nothing -> return  NoParam
      Just e ->  do
-       v <- getValue e            -- !!> ("exist" ++ show par)
-       readParam v            -- !!> ("getParam for "++ show v)
+       v <- getValue e                       -- !!> ("exist" ++ show par)
+       readParam v                        -- !!> ("getParam for "++ show v)
 
 
 type Params= Attribs
@@ -307,25 +306,32 @@ validate  w val=  do
 
 
 
-newtype Prefix= Prefix JSString
+newtype Prefix= Prefix JSString deriving(Read,Show)
 -- | Generate a new string. Useful for creating tag identifiers and other attributes.
 --
 -- if the page is refreshed, the identifiers generated are the same.
 genNewId ::  StateIO  JSString
 genNewId=  do
-      Log _ _ log <- getSessionData `onNothing` return (Log False [] [])
-      mid <- getSessionData
-      let pre = case mid of
-                Nothing -> ""
-                Just(Prefix pre ) ->  pre
+--      Log _ _ log <- getData `onNothing` return (Log False [] [])
 
-      n <- genId                      -- !!> "genNewId"
-      return  $ pre <> (toJSString $ 'p':  (show $ Prelude.length log)++ ('n':show n))
+      Prefix pre <- getData `onNothing` return (Prefix "")
+
+      n <- genId
+      return  $ pre <> (toJSString $ {-'p':  (show $ Prelude.length log)++-} ('n':show n))
+
+getPrev ::  StateIO  JSString
+getPrev= do
+      n' <- getPrevId
+      let n= n'-1
+      Prefix pre <- getData `onNothing` return (Prefix "")
+
+      return  $ pre <> (toJSString $ {-'p':  (show $ Prelude.length log)++-} ('n':show n))
+
 
 addPrefix= Transient $ do
    n <- genId
-   Prefix s <- getSessionData `onNothing` return ( Prefix "")
-   setSData $ Prefix (toJSString( 's': show n) <> s)
+   Prefix s <- getData `onNothing` return ( Prefix "")
+   setSData $ Prefix (toJSString( 's': show n)<> s)
    return $ Just ()
 
 
@@ -383,10 +389,10 @@ newtype Radio a= Radio a deriving Monoid
 setRadio :: (Typeable a, Eq a, Show a) =>
             a ->  TransIO  (Radio a)
 setRadio v = Transient $ do
-  RadioId n <- getSessionData `onNothing` error "setRadio out of getRadio"
+  RadioId n <- getData `onNothing` error "setRadio out of getRadio"
   id <- genNewId
   st <- get
---  setSessionData HasElems       -- only for MFlow
+--  setData HasElems       -- only for MFlow
   me <- liftIO $ elemById id
   checked <-  case me  of
        Nothing -> return ""
@@ -431,7 +437,7 @@ setCheckBox :: (Typeable a , Show a) =>
 setCheckBox checked' v= Transient $ do
   n  <- genNewId
   st <- get
-  setSessionData HasElems
+  setData HasElems
   me <- liftIO $ elemById n
   checked <- case me of             -- !!>  show ("setCheckBox",n,isJust me) of
        Nothing ->  return $ if checked' then "true" else ""
@@ -500,7 +506,7 @@ getParamS  type1 mvalue= do
               else if typeOf v== typeOf (undefined :: JSString) then unsafeCoerce v            -- !!> "jsstring"
               else toJSString $ show v             -- !!> "show"
 
-    setSessionData HasElems
+    setData HasElems
     r <- getParam1 tolook
 
     case r of
@@ -548,9 +554,9 @@ getSelect opts = res where
   res= Transient $ do
     tolook <- genNewId
     st <- get
---    setSessionData HasElems
+--    setData HasElems
     r <- getParam1 tolook `asTypeOf` typef res
---    setSessionData $ fmap MFOption $ valToMaybe r
+--    setData $ fmap MFOption $ valToMaybe r
     runView $ fselect tolook <<< opts
 --
     return $ valToMaybe r
@@ -665,10 +671,10 @@ wprint = wraw . pre
          -> TransIO a
          -> TransIO a
 (<<<) v form= Transient $ do
-  rest <- getSessionData `onNothing` return noHtml
+  rest <- getData `onNothing` return noHtml
   delSData rest
   mx <- runView form
-  f <- getSessionData `onNothing` return noHtml
+  f <- getData `onNothing` return noHtml
   setSData $ rest <> v f
   return mx
 
@@ -717,11 +723,11 @@ html ++> w =
 -- it has a fixity @infix 8@
 infixl 8 <!
 widget <! attribs= Transient $ do
-      rest <- getSessionData `onNothing` return mempty
+      rest <- getData `onNothing` return mempty
       delSData rest
       mx <- runView widget
-      fs <- getSessionData `onNothing` return mempty
-      setSessionData  $ rest <> (fs `attrs` attribs :: Perch)
+      fs <- getData `onNothing` return mempty
+      setData  $ rest <> (fs `attrs` attribs :: Perch)
       return mx
 
 
@@ -838,7 +844,7 @@ instance  IsEvent  BrowserEvent  where
 #else
     ""
 #endif
-  buildHandler elem e io = do
+  buildHandler elem e io =
     case e of
      OnLoad -> do
       cb <- syncCallback1 ContinueAsync (const $ setDat elem (io
@@ -1003,27 +1009,24 @@ instance  IsEvent  BrowserEvent  where
    setDat elem action  = do
          action            -- !!> "begin action"
          return ()            -- !!> "end action"
-
-
-
-viewEffects :: Effects
-viewEffects x _ f= do
---     i <- genId
---     let id1 = toJSString $ "s"++ show i
-     id1 <- genNewId
-     st <- get
-
-     (t, mx) <- baseEffects  x  (strip st x)  (\x -> runWidgetId' (f x) id1)
-
-     return (\x -> (add  (span ! id id1) x ), mx)
-
-add  v form= do
-     rest <- getSessionData `onNothing` return noHtml
-     delSData rest
-     mx <-  form
-     f <- getSessionData `onNothing` return noHtml
-     setSData $ rest <>   v f
-     return mx
+--viewEffects :: Effects
+--viewEffects x _ f= do
+--     id1 <- genNewId  !!> "viewEffectsId"
+--
+--     st <- get
+--
+--     (t, mx) <- baseEffects  x  (strip st x)  (\x -> runWidgetId' (f x) id1)
+--
+--     return (\x -> (add  id1 (span ! id id1) x ), mx)
+--
+--add  id1 v form= do
+--     rest <- getData `onNothing` return noHtml
+--     delSData rest !!> show("added span", id1)
+--     mx <-  form
+--     f <- getData `onNothing` return noHtml
+--     setSData $ rest <>   v f
+--     setSData $ IdLine id1
+--     return mx
 
 #ifdef ghcjs_HOST_OS
 foreign import javascript unsafe
@@ -1034,27 +1037,27 @@ removeNextSibling = undefined
 #endif
 
 
-static mx= Transient $ do
-     prev <- gets effects
-     modify $ \ s-> s{effects=  baseEffects}
-     x <- runTrans mx
-     modify $ \ s-> s{effects= unsafeCoerce prev}
-     return x
-
-
-strip st x= Transient $ do
---    old <- getSessionData `onNothing` return noHtml
-    st' <- get
-    put st'{mfSequence= mfSequence st}
-    mx <- runView x
-    put st'
-    delSData noHtml
-    return  mx
+--static mx= Transient $ do
+--     prev <- gets effects
+--     modify $ \ s-> s{effects=  baseEffects}
+--     x <- runTrans mx
+--     modify $ \ s-> s{effects= unsafeCoerce prev}
+--     return x
+--
+--
+--strip st x= Transient $ do
+----    old <- getData `onNothing` return noHtml
+--    st' <- get
+--    put st'{mfSequence= mfSequence st}
+--    mx <- runView x
+--    put st'
+--    delSData noHtml
+--    return  mx
 
 addSData :: (MonadState EventF m,Typeable a ,Monoid a) => a -> m ()
 addSData y= do
-  x <- getSessionData `onNothing` return  mempty
-  setSessionData (x <> y)
+  x <- getData `onNothing` return  mempty
+  setData (x <> y)
 
 
 
@@ -1076,18 +1079,25 @@ addSData y= do
 raiseEvent ::  IsEvent event  => Widget a -> event -> Widget a
 raiseEvent w event = do
    r <- Transient $ do
-       cont <- get   >>= \c -> return c{mfSequence= mfSequence c -1}
+       cont <- get --   >>= \c -> return c{mfSequence= mfSequence c -1}
        let iohandler :: EventData -> IO ()
            iohandler eventdata =do
-
-                runStateT (setSData eventdata >> runCont cont) cont        -- !!> "runCont INIT"
+                runStateT (setSData eventdata >>  runCont' cont) cont        -- !!> "runCont INIT"
                 return ()                                             -- !!> "runCont finished"
        runView $  addEvent event iohandler <<< w
    return r
    where
+   runCont' cont= do
+     setSData Repeat               -- !!> "INITCLOSURE"
+     mr <- runClosure cont
+     return ()              -- !!> "ENDCLOSURE"
+     case mr of
+         Nothing -> return Nothing
+         Just r -> runContinuation cont r
+
        -- create an element and add any event handler to it.
-       addEvent :: IsEvent a =>  a -> (EventData -> IO()) -> Perch -> Perch
-       addEvent event iohandler be= Perch $ \e -> do
+   addEvent :: IsEvent a =>  a -> (EventData -> IO()) -> Perch -> Perch
+   addEvent event iohandler be= Perch $ \e -> do
             e' <- build (span ! atr "name" "event" $ be) e
             buildHandler e' event iohandler
             return e'
@@ -1101,6 +1111,7 @@ stopPropagation= undefined
 #endif
 
 
+
 -- | A shorter synonym for `raiseEvent`
 fire ::   IsEvent event => Widget a -> event -> Widget a
 fire = raiseEvent
@@ -1109,9 +1120,6 @@ fire = raiseEvent
 wake ::   IsEvent event => Widget a -> event -> Widget a
 wake = raiseEvent
 
--- | A professional synonym for `raiseEvent`
-react ::  IsEvent event => Widget a -> event -> Widget a
-react = raiseEvent
 
 -- | pass trough only if the event is fired in this DOM element.
 -- Otherwise, if the code is executing from a previous event, the computation will stop
@@ -1125,8 +1133,8 @@ pass v event= do
 -- | return empty and the monadic computation stop if the condition is false.
 -- If true, return the second parameter.
 continueIf :: Bool -> a -> Widget a
-continueIf True x  = return x
-continueIf False _ = empty
+continueIf b x  = guard b >> return x
+
 
 ---- | executes a widget each t milliseconds until it validates and return ()
 --wtimeout :: Int -> Widget () -> Widget ()
@@ -1151,15 +1159,17 @@ continueIf False _ = empty
 --
 
 
-runWidgetId' :: Widget b -> ElemID  -> TransIO b
+runWidgetId' ::  Widget b -> ElemID  -> TransIO b
 runWidgetId' ac id1= Transient  runWidget1
  where
  runWidget1 = do
-   me <- liftIO $ elemById id1            -- !!> ("RUNWIDGETID " ++ show id1)
+
+   me <- liftIO $ elemById id1                         -- !!> ("RUNWIDGETID " ++ show id1)
    case me of
      Just e ->  do
 
-          runTrans $ runWidget' ac e       -- !!> show ("found",id1)
+          r <- runTrans $ runWidget' ac e       -- !!> show ("found",id1)
+          return r             -- !!> show ( "END RUNWIDGETID", id1)
 
 
      Nothing -> -- runTrans ac !!> ( "ID NOT FOUND " ++ show id) -- runTrans ac
@@ -1182,14 +1192,14 @@ runWidget action e = do
 
 runWidget' :: Widget b -> Elem   -> TransIO b
 runWidget' action e  = Transient $ do
-
-      setSData (IdLine e)
---      modify $ \s -> s{effects= viewEffects}
       mx <- runView action
-      render <- getSessionData `onNothing` (return  noHtml)
-      liftIO $ clearChildren e
-      e' <- liftIO $ build render e
-      setSData (IdLine e')
+      render <- getData `onNothing` (return  noHtml)
+--      mr <- getData
+--      when (mr== Just Repeat) $ do
+--         delSData Repeat
+--      liftIO $ clearChildren e
+      liftIO $ build render e
+
       delSessionData render
       return mx
 
@@ -1214,35 +1224,78 @@ runBody w= do
 
 
 
--- | use this instead of `Transient.Base.keep` when runing in the browser
-keep mx= do
 
-   runTransient mx
-
--- | use this instead of `Transient.Base.keep` when runing in the browser
-keep'= keep
 
 -- | use this instead of `Transient.Move.runCloud` when running in the browser
-runCloud (Cloud mx)= keep  mx
+runCloud (Cloud mx)= runTransient   mx
 
-newtype IdLine= IdLine Elem
 
-render :: Cloud a -> Cloud a
+teleport= do
+    copyData $ Prefix ""
+    copyData $ IdLine ""
+    copyData $ Repeat
+    copyCounter
+    TL.teleport
+    where
+    copyCounter= do
+      r <- local $ gets mfSequence
+      onAll $ modify $ \s -> s{mfSequence= r}
+
+
+
+newtype IdLine= IdLine JSString deriving(Read,Show)
+data Repeat= Repeat | RepeatHandled JSString deriving (Eq, Read, Show)
+
+render :: TransIO a -> TransIO a
 #ifdef ghcjs_HOST_OS
-render  (Cloud mx) = Cloud $ do
-   modify $ \s -> s{effects= unsafeCoerce viewEffects}               -- !!> "RENDER"
-   me <- getSessionData
-   r <- case me of
-     Just (IdLine e) -> runWidget' mx e              --   !!> "YES IDLINE"
-     Nothing -> do
-        id1 <- Transient $ Just <$> genNewId
-        runWidgetId'  mx id1                         --  !!> "NO IDLINE"
-   modify $ \s -> s{effects= baseEffects}            --  !!> "end render"
-   return r
+render  mx = do
+--       modify $ \s -> s{effects= unsafeCoerce viewEffects}
+
+       id1 <- Transient $ do
+         me <- getData               -- !!> "RENDER"
+         case me of
+             Just (IdLine id1) -> return $ Just id1
+             Nothing ->  Just <$> genNewId
+       id2 <- Transient $ Just <$> genNewId
+--       setSData $ IdLine id2
+
+
+       runWidgetId'  (mx' id2 <++ (span ! id id2 $ noHtml)) id1
+--       modify $ \s -> s{effects=   baseEffects}
+
+
+  where
+  mx' id2= do
+     r <- mx
+     addPrefix
+     (setSData $ IdLine id2)            -- !!> show ("set",id2)
+
+     do
+           re <- getSData
+           case re of
+             Repeat -> do
+              setSData $ RepeatHandled id2
+              delSData noHtml
+             RepeatHandled  idx -> do
+               me <- liftIO $ elemById idx
+               case me of
+                 Just e ->  (liftIO $ clearChildren e)              -- !!> show ("clear",id2)
+                 Nothing -> return ()
+               delSData Repeat
+           return r
+        <|> return r             -- !!> "NO DEL"
+
+
 #else
 render x= x
 #endif
 
+
+    --   st@(EventF eff e x (fs) d n  r applic  ch rc bs)  <- get
+
+    --   let cont=  EventF eff e x fs  d n  r applic  ch rc bs
+    --   put cont
+    --   liftIO $ print ("length1",Prelude.length fs)
 
 
 -- | use this instead of `Transient.Base.option` when runing in the browser
@@ -1264,10 +1317,7 @@ addChildBefore= undefined
 
 data UpdateMethod= Append | Prepend | Insert deriving Show
 
-#ifndef __GHCJS__
-instance MonadIO PerchM where
-  liftIO io = Perch $ \e -> io >> return e
-#endif
+
 
 -- | Run the widget as the content of the element with the given id. The content can
 -- be appended, prepended to the previous content or it can be the only content depending on the
