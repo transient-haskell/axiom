@@ -16,9 +16,6 @@
   OverloadedStrings, DeriveDataTypeable, UndecidableInstances,
   ExistentialQuantification, GeneralizedNewtypeDeriving, CPP #-}
 
-#ifdef __GHCJS__
-{-# LANGUAGE JavaScriptFFI #-}
-#endif
 
 module GHCJS.HPlay.View(
 Widget,
@@ -55,7 +52,7 @@ BrowserEvent(..)
 ,continueIf
 
 -- * running it
-, runCloud, GHCJS.HPlay.View.teleport
+, runCloud', GHCJS.HPlay.View.teleport
 ,runWidget,runWidgetId', runBody, addHeader, render
 
 -- * Perch is reexported
@@ -70,7 +67,7 @@ BrowserEvent(..)
 ElemID, elemById,withElem,getProp,setProp, alert,
 fromJSString, toJSString
 )  where
-import Transient.Base hiding (input,option,keep, keep',runCloud)
+import Transient.Base hiding (input,option,keep, keep',runCloud')
 import Transient.Move as TL (Cloud(..),copyData,local, onAll,teleport)
 
 import Control.Applicative
@@ -86,20 +83,21 @@ import System.IO.Unsafe
 import Control.Concurrent.MVar
 import Data.IORef
 import qualified Data.Map as M
-import Control.Monad.Trans.Maybe
 import Prelude hiding(id,span)
 import GHCJS.Perch hiding (eventName,JsEvent(..),option )
 import Data.Dynamic
 
 import Control.Concurrent
 
-#ifdef __GHCJS__
+#ifdef ghcjs_HOST_OS
+
 import GHCJS.Types
 import GHCJS.Marshal
 import GHCJS.Foreign
 import GHCJS.Foreign.Callback -- as CB
 
 import Data.JSString as JS hiding (span,empty,strip)
+
 
 foreign import javascript unsafe  "$1[$2].toString()" getProp :: Elem -> JSString -> IO JSString
 foreign import javascript unsafe  "$1[$2]= $3" setProp :: Elem -> JSString -> JSString -> IO ()
@@ -698,9 +696,9 @@ infixr 7 <<
       -> Perch
       -> TransIO a
 (<++) form v= Transient $ do
-  mx <-  runView  form
-  addSData v
-  return mx
+      mx <-  runView  form
+      addSData v
+      return mx
 
 infixr 6  ++>
 infixr 6 <++
@@ -1226,8 +1224,8 @@ runBody w= do
 
 
 
--- | use this instead of `Transient.Move.runCloud` when running in the browser
-runCloud (Cloud mx)= runTransient   mx
+-- | use this instead of `Transient.Move.runCloud'` when running in the browser
+runCloud' (Cloud mx)=  runTransient  mx
 
 
 teleport= do
@@ -1249,37 +1247,38 @@ data Repeat= Repeat | RepeatHandled JSString deriving (Eq, Read, Show)
 render :: TransIO a -> TransIO a
 #ifdef ghcjs_HOST_OS
 render  mx = do
---       modify $ \s -> s{effects= unsafeCoerce viewEffects}
-
        id1 <- Transient $ do
          me <- getData               -- !!> "RENDER"
          case me of
              Just (IdLine id1) -> return $ Just id1
              Nothing ->  Just <$> genNewId
        id2 <- Transient $ Just <$> genNewId
---       setSData $ IdLine id2
 
+       runWidgetId'  (mx' id1 id2 <++ (span ! id id2 $ noHtml)) id1
 
-       runWidgetId'  (mx' id2 <++ (span ! id id2 $ noHtml)) id1
---       modify $ \s -> s{effects=   baseEffects}
 
 
   where
-  mx' id2= do
+  mx' id1 id2= do
+     setSData $ IdLine id1
      r <- mx
      addPrefix
      (setSData $ IdLine id2)            -- !!> show ("set",id2)
 
      do
-           re <- getSData
-           case re of
+           re <- getSData        -- succed if is the result of an event
+           case re  !!>  "event" of
              Repeat -> do
+              me <- liftIO $ elemById id2
+              case me of
+                 Just e ->  (liftIO $ clearChildren e)               !!> show ("clear1",id2)
+                 Nothing -> return ()
               setSData $ RepeatHandled id2
               delSData noHtml
              RepeatHandled  idx -> do
                me <- liftIO $ elemById idx
                case me of
-                 Just e ->  (liftIO $ clearChildren e)              -- !!> show ("clear",id2)
+                 Just e ->  (liftIO $ clearChildren e)               !!> show ("clear2",idx)
                  Nothing -> return ()
                delSData Repeat
            return r

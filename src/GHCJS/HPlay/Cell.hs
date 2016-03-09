@@ -15,7 +15,6 @@
 module GHCJS.HPlay.Cell  where
 import Transient.Base
 import GHCJS.HPlay.View
-import Control.Monad.IO.Class
 import Data.Typeable
 import Unsafe.Coerce
 import qualified Data.Map as M hiding ((!))
@@ -26,9 +25,7 @@ import Data.Maybe
 import Control.Exception
 import Data.List
 
-#ifdef ghcjs_HOST_OS
-import qualified Data.JSString as JS
-#endif
+import GHCJS.Perch
 
 data Cell  a = Cell { mk :: Maybe a -> Widget a
                     , setter ::  a -> IO ()

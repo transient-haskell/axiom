@@ -23,7 +23,7 @@ source-repository head
 
 library
     if impl(ghcjs >= 0.1)
-        build-depends: base >4.0 && <5, ghcjs-base, transformers, containers, transient==0.2,
+        build-depends: base >4.0 && <5, ghcjs-base, containers, transient==0.2,
                        data-default, mtl, ghcjs-perch, ghcjs-base
         exposed: True
         buildable: True
