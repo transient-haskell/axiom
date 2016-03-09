@@ -125,15 +125,15 @@ gcell n= \vars -> case M.lookup n vars of
 
 
 -- a parameter is a function of all of the rest parameters
-type Expr a = M.Map JS.JSString a -> a
+type Expr a = M.Map JSString a -> a
 
 rtries= unsafePerformIO $ newIORef $ (0::Int)
 maxtries=  3* (M.size $ unsafePerformIO $ readIORef rexprs)
 
-rexprs :: IORef (M.Map JS.JSString (Expr Float))
+rexprs :: IORef (M.Map JSString (Expr Float))
 rexprs= unsafePerformIO $ newIORef M.empty
 
-rmodified :: IORef (M.Map JS.JSString (Expr Float))
+rmodified :: IORef (M.Map JSString (Expr Float))
 rmodified= unsafePerformIO $ newIORef M.empty
 
 
@@ -183,10 +183,10 @@ calc= do
   where
   -- http://blog.sigfpe.com/2006/11/from-l-theorem-to-spreadsheet.html
   -- loeb ::  Functor f => f (t -> a) -> f a
-  loeb :: M.Map JS.JSString (Expr a) -> M.Map JS.JSString a
+  loeb :: M.Map JSString (Expr a) -> M.Map JSString a
   loeb x = fmap (\a -> a (loeb  x)) x
 
-  calc1  :: IO [(JS.JSString,Float)]
+  calc1  :: IO [(JSString,Float)]
   calc1= do
     writeIORef rtries 0
     cells <- liftIO $ readIORef rexprs
@@ -200,7 +200,7 @@ calc= do
 
   circular n= "loop detected in cell: "++ show n  ++ " please fix the error"
 
-  doit :: SomeException -> IO [(JS.JSString,Float)]
+  doit :: SomeException -> IO [(JSString,Float)]
   doit e= do
     nvs <- readIORef rmodified
     exprs <- readIORef rexprs
