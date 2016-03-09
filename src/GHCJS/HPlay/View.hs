@@ -1,17 +1,3 @@
------------------------------------------------------------------------------
---
--- Module      :  View
--- Copyright   :
--- License     :  BSD3
---
--- Maintainer  :  agocorona@gmail.com
--- Stability   :  experimental
--- Portability :
---
--- | The haste-hplayground framework.  <http://github.com/agocorona/hplayground>
---
------------------------------------------------------------------------------
-
 {-# LANGUAGE FlexibleContexts, FlexibleInstances,
   OverloadedStrings, DeriveDataTypeable, UndecidableInstances,
   ExistentialQuantification, GeneralizedNewtypeDeriving, CPP #-}
@@ -97,31 +83,10 @@ import GHCJS.Foreign
 import GHCJS.Foreign.Callback -- as CB
 
 import Data.JSString as JS hiding (span,empty,strip)
-
-
-foreign import javascript unsafe  "$1[$2].toString()" getProp :: Elem -> JSString -> IO JSString
-foreign import javascript unsafe  "$1[$2]= $3" setProp :: Elem -> JSString -> JSString -> IO ()
-foreign import javascript unsafe  "alert($1)" alert ::  JSString -> IO ()
-
-
-
-foreign import javascript unsafe  "document.getElementById($1)" elemByIdDOM  :: JSString -> IO JSVal
-
-foreign import javascript unsafe  "$1.value" getValueDOM :: Elem -> IO JSVal
-#else
-unpack= undefined
-getProp :: Elem -> JSString -> IO JSString
-getProp = undefined
-setProp :: Elem -> JSString -> JSString -> IO ()
-setProp = undefined
-alert ::  JSString -> IO ()
-alert= undefined
-data Callback a= Callback a
-data ContinueAsync=ContinueAsync
-syncCallback1= undefined
-fromJSValUnchecked= undefined
-fromJSValUncheckedListOf= undefined
 #endif
+
+
+
 
 toJSString x=
      if typeOf x== typeOf (undefined :: String )
@@ -819,13 +784,7 @@ class IsEvent a where
    eventName :: a -> JSString
    buildHandler :: Elem -> a  ->(EventData -> IO()) -> IO()
 
-#ifdef ghcjs_HOST_OS
-foreign import javascript unsafe
-  "$1.addEventListener($2, $3,false);"
-  js_addEventListener :: Elem -> JSString -> Callback (JSVal -> IO ()) -> IO ()
-#else
-js_addEventListener= undefined
-#endif
+
 
 data BrowserEvent= OnLoad | OnUnload | OnChange | OnFocus | OnMouseMove | OnMouseOver |
  OnMouseOut | OnClick | OnDblClick | OnMouseDown | OnMouseUp | OnBlur |
@@ -1026,13 +985,13 @@ instance  IsEvent  BrowserEvent  where
 --     setSData $ IdLine id1
 --     return mx
 
-#ifdef ghcjs_HOST_OS
-foreign import javascript unsafe
-  "var p=$1.parentNode;while ($1.nextSibling)p.removeChild($1.nextSibling);p.removeChild($1)"
-  removeNextSibling :: Elem -> IO ()
-#else
-removeNextSibling = undefined
-#endif
+-- #ifdef ghcjs_HOST_OS
+--foreign import javascript unsafe
+--  "var p=$1.parentNode;while ($1.nextSibling)p.removeChild($1.nextSibling);p.removeChild($1)"
+--  removeNextSibling :: Elem -> IO ()
+-- #else
+--removeNextSibling = undefined
+-- #endif
 
 
 --static mx= Transient $ do
@@ -1208,11 +1167,6 @@ addHeader format= do
     build format head
     return ()
 
-#ifdef ghcjs_HOST_OS
-foreign import javascript unsafe "document.head" getHead :: IO Elem
-#else
-getHead= undefined
-#endif
 
 -- | run the widget as the body of the HTML
 runBody :: Widget a -> IO (Maybe a)
@@ -1304,15 +1258,7 @@ option x v=  wlink x (toElem v)<++ " "
 
 --foreign import javascript unsafe "document.body" getBody :: IO Elem
 
-#ifdef ghcjs_HOST_OS
-foreign import javascript unsafe "$1.childNodes()" getChildren :: Elem -> IO JSVal
-foreign import javascript unsafe "$2.insertBefore($1, $3)" addChildBefore :: Elem -> Elem -> Elem -> IO()
-#else
-getChildren :: Elem -> IO JSVal
-getChildren= undefined
-addChildBefore :: Elem -> Elem -> Elem -> IO()
-addChildBefore= undefined
-#endif
+
 
 data UpdateMethod= Append | Prepend | Insert deriving Show
 
@@ -1344,5 +1290,56 @@ at id method w= set <<< w
                              build render span
                              return e
 
+#ifdef ghcjs_HOST_OS
+
+foreign import javascript unsafe  "$1[$2].toString()" getProp :: Elem -> JSString -> IO JSString
+
+foreign import javascript unsafe  "$1[$2]= $3" setProp :: Elem -> JSString -> JSString -> IO ()
+
+foreign import javascript unsafe  "alert($1)" alert ::  JSString -> IO ()
 
 
+
+foreign import javascript unsafe  "document.getElementById($1)" elemByIdDOM  :: JSString -> IO JSVal
+
+foreign import javascript unsafe  "$1.value" getValueDOM :: Elem -> IO JSVal
+
+#else
+unpack= undefined
+getProp :: Elem -> JSString -> IO JSString
+getProp = undefined
+setProp :: Elem -> JSString -> JSString -> IO ()
+setProp = undefined
+alert ::  JSString -> IO ()
+alert= undefined
+data Callback a= Callback a
+data ContinueAsync=ContinueAsync
+syncCallback1= undefined
+fromJSValUnchecked= undefined
+fromJSValUncheckedListOf= undefined
+#endif
+
+#ifdef ghcjs_HOST_OS
+foreign import javascript unsafe
+  "$1.addEventListener($2, $3,false);"
+  js_addEventListener :: Elem -> JSString -> Callback (JSVal -> IO ()) -> IO ()
+#else
+js_addEventListener= undefined
+#endif
+
+
+#ifdef ghcjs_HOST_OS
+foreign import javascript unsafe "document.head" getHead :: IO Elem
+#else
+getHead= undefined
+#endif
+
+#ifdef ghcjs_HOST_OS
+foreign import javascript unsafe "$1.childNodes()" getChildren :: Elem -> IO JSVal
+foreign import javascript unsafe "$2.insertBefore($1, $3)" addChildBefore :: Elem -> Elem -> Elem -> IO()
+#else
+getChildren :: Elem -> IO JSVal
+getChildren= undefined
+addChildBefore :: Elem -> Elem -> Elem -> IO()
+addChildBefore= undefined
+#endif

@@ -28,6 +28,10 @@ import Data.List
 
 import GHCJS.Perch
 
+#ifdef ghcjs_HOST_OS
+import Data.JSString
+#endif
+
 data Cell  a = Cell { mk :: Maybe a -> Widget a
                     , setter ::  a -> IO ()
                     , getter ::  IO (Maybe a)}
