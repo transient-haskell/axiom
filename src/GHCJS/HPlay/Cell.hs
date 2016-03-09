@@ -20,6 +20,7 @@ import Unsafe.Coerce
 import qualified Data.Map as M hiding ((!))
 import System.IO.Unsafe
 import Data.IORef
+import Control.Monad.IO.Class
 import Control.Monad
 import Data.Maybe
 import Control.Exception
@@ -38,7 +39,7 @@ data Cell  a = Cell { mk :: Maybe a -> Widget a
 
 -- a box cell with polimorphic value, identified by a string
 boxCell :: (Show a, Read a, Typeable a) => ElemID -> Cell a
-boxCell id = Cell{ mk= \mv -> getParam (Just id) "text" mv
+boxCell id = Cell{ mk= \mv -> getParam  id  mv
                  , setter= \x -> do
                           me <- elemById id
                           case me of
@@ -140,12 +141,12 @@ rmodified= unsafePerformIO $ newIORef M.empty
 
 mkscell name val expr= mk (scell name expr) val
 
-scell id  expr= Cell{ mk= \mv-> static $ do
+scell id  expr= Cell{ mk= \mv->   do
                            liftIO $ do
                              exprs <- readIORef rexprs
                              writeIORef rexprs $ M.insert id expr exprs
 
-                           r <- getParam (Just id) "text" mv `fire` OnKeyUp
+                           r <- getParam  id  mv `fire` OnKeyUp
                            liftIO $ do
                                 mod <- readIORef rmodified
                                 writeIORef rmodified  $ M.insert  id (const r)  mod
