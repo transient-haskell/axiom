@@ -5,6 +5,11 @@
 
 module GHCJS.HPlay.View(
 Widget,
+
+-- * running it
+simpleWebApp, atServer, runCloud', GHCJS.HPlay.View.teleport
+,runWidget,runWidgetId', runBody, addHeader, render,
+
 -- * re-exported
 module Control.Applicative,
 
@@ -37,9 +42,7 @@ BrowserEvent(..)
 ,raiseEvent, fire, wake, pass
 ,continueIf
 
--- * running it
-, runCloud', GHCJS.HPlay.View.teleport
-,runWidget,runWidgetId', runBody, addHeader, render
+
 
 -- * Perch is reexported
 ,module GHCJS.Perch
@@ -53,9 +56,19 @@ BrowserEvent(..)
 ElemID, elemById,withElem,getProp,setProp, alert,
 fromJSString, toJSString
 )  where
-import Transient.Base hiding (input,option,keep, keep',runCloud')
-import Transient.Move as TL (Cloud(..),copyData,local, onAll,teleport)
 
+
+import Transient.Base hiding (input,option,keep, keep')
+
+#ifdef ghcjs_HOST_OS
+import Transient.Move as TL (Cloud(..),copyData,local, onAll,teleport,getWebServerNode
+                        ,listen, runAt,isBrowserInstance,createNode,createWebNode)
+#else
+import Transient.Move as TL (Cloud(..),copyData,local, onAll,teleport,getWebServerNode
+                        ,listen, runAt,isBrowserInstance,createNode,createWebNode,runCloud')
+#endif
+
+import Transient.Logged
 import Control.Applicative
 import Data.Monoid
 
@@ -85,8 +98,27 @@ import GHCJS.Foreign.Callback -- as CB
 import Data.JSString as JS hiding (span,empty,strip)
 #endif
 
+-- | executes the application in the server and the Web browser.
+-- the browser must point to http://hostname:port where port is the first parameter
+simpleWebApp :: Integer -> Cloud x -> IO ()
+simpleWebApp port app= do
+    serverNode  <- getWebServerNode port
 
+    let  mynode    = if isBrowserInstance
+                       then createWebNode
+                       else serverNode
+    liftIO $ print mynode
+    runCloud' $ do
+          listen mynode
+          setData serverNode
+          app
+    return ()
 
+-- | run A computation in the web server
+atServer :: Loggable a => Cloud a -> Cloud a
+atServer proc= do
+     server <- onAll getSData <|> error "server not set, use 'setData serverNode'"
+     runAt server proc
 
 toJSString x=
      if typeOf x== typeOf (undefined :: String )
@@ -97,10 +129,10 @@ fromJSString :: (Typeable a,Read a) => JSString -> a
 fromJSString s= x
    where
    x | typeOf x == typeOf (undefined :: JSString) =
-       unsafeCoerce x            -- !!> "unsafecoerce"
+       unsafeCoerce x            --  !> "unsafecoerce"
      | typeOf x == typeOf (undefined :: String) =
        unsafeCoerce $ pack $ unsafeCoerce x            -- !!> "packcoerce"
-     | otherwise = read $ unpack s            -- !!> "readunpack"
+     | otherwise = read $ unpack s            -- !> "readunpack"
 
 getValue :: MonadIO m => Elem -> m (Maybe String)
 #ifdef ghcjs_HOST_OS
@@ -642,7 +674,6 @@ wprint = wraw . pre
   return mx
 
 
-
 infixr 5 <<<
 
 -- | A parameter application with lower priority than ($) and direct function application
@@ -1177,10 +1208,10 @@ runBody w= do
 
 
 
-
+#ifdef ghcjs_HOST_OS
 -- | use this instead of `Transient.Move.runCloud'` when running in the browser
 runCloud' (Cloud mx)=  runTransient  mx
-
+#endif
 
 teleport= do
     copyData $ Prefix ""
@@ -1221,18 +1252,18 @@ render  mx = do
 
      do
            re <- getSData        -- succed if is the result of an event
-           case re  !!>  "event" of
+           case re   !>  "event" of
              Repeat -> do
               me <- liftIO $ elemById id2
               case me of
-                 Just e ->  (liftIO $ clearChildren e)               !!> show ("clear1",id2)
+                 Just e ->  (liftIO $ clearChildren e)               !> show ("clear1",id2)
                  Nothing -> return ()
               setSData $ RepeatHandled id2
               delSData noHtml
              RepeatHandled  idx -> do
                me <- liftIO $ elemById idx
                case me of
-                 Just e ->  (liftIO $ clearChildren e)               !!> show ("clear2",idx)
+                 Just e ->  (liftIO $ clearChildren e)               !> show ("clear2",idx)
                  Nothing -> return ()
                delSData Repeat
            return r
