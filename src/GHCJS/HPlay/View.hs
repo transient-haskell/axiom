@@ -7,7 +7,7 @@ module GHCJS.HPlay.View(
 Widget,
 
 -- * running it
-simpleWebApp, atServer, runCloud', GHCJS.HPlay.View.teleport
+simpleWebApp, atServer, atRemote, runCloudIO
 ,runWidget,runWidgetId', runBody, addHeader, render,
 
 -- * re-exported
@@ -49,7 +49,7 @@ BrowserEvent(..)
 
 
 -- * low level and internals
-,getNextId,genNewId, continuePerch, addPrefix
+,getNextId,genNewId, continuePerch
 ,getParam, getCont,runCont
 ,FormInput(..),
 
@@ -60,13 +60,8 @@ fromJSString, toJSString
 
 import Transient.Base hiding (input,option,keep, keep')
 
-#ifdef ghcjs_HOST_OS
-import Transient.Move as TL (Cloud(..),copyData,local, onAll,teleport,getWebServerNode
-                        ,listen, runAt,isBrowserInstance,createNode,createWebNode)
-#else
-import Transient.Move as TL (Cloud(..),copyData,local, onAll,teleport,getWebServerNode
-                        ,listen, runAt,isBrowserInstance,createNode,createWebNode,runCloud')
-#endif
+
+
 
 import Transient.Logged
 import Control.Applicative
@@ -83,42 +78,53 @@ import Control.Concurrent.MVar
 import Data.IORef
 import qualified Data.Map as M
 import Prelude hiding(id,span)
-import GHCJS.Perch hiding (eventName,JsEvent(..),option )
+
 import Data.Dynamic
 
 import Control.Concurrent
 
 #ifdef ghcjs_HOST_OS
-
+import Transient.Move hiding (pack)
+import GHCJS.Perch hiding (eventName,JsEvent(..),option)
 import GHCJS.Types
 import GHCJS.Marshal
 import GHCJS.Foreign
 import GHCJS.Foreign.Callback -- as CB
 
 import Data.JSString as JS hiding (span,empty,strip)
+#else
+import Transient.Move hiding (pack,JSString)
+import GHCJS.Perch hiding (eventName,JsEvent(..),option,JSVal)
 #endif
 
 -- | executes the application in the server and the Web browser.
 -- the browser must point to http://hostname:port where port is the first parameter
 simpleWebApp :: Integer -> Cloud x -> IO ()
-simpleWebApp port app= do
+simpleWebApp port app=  do
     serverNode  <- getWebServerNode port
 
     let  mynode    = if isBrowserInstance
                        then createWebNode
                        else serverNode
-    liftIO $ print mynode
-    runCloud' $ do
+
+    runCloudIO $ do
           listen mynode
           setData serverNode
           app
     return ()
 
--- | run A computation in the web server
+-- | if invoked from the browser, run A computation in the web server and return to the browser
 atServer :: Loggable a => Cloud a -> Cloud a
 atServer proc= do
      server <- onAll getSData <|> error "server not set, use 'setData serverNode'"
-     runAt server proc
+     wormhole server $ atRemote proc
+
+-- | if invoked from the server or browwser, run the computation in the other node  (need to be in a wormhole)
+atRemote proc= do
+     teleport
+     r <- proc
+     teleport
+     return r
 
 toJSString x=
      if typeOf x== typeOf (undefined :: String )
@@ -246,7 +252,7 @@ fromValidated (NotValidated s err)= error $ "fromValidated: NotValidated "++ s
 getParam1 :: ( Typeable a, Read a, Show a)
           => JSString ->  StateIO (ParamResult Perch a)
 getParam1 par = do
-   me <- elemById par                         -- !!> ("looking for " ++ show par)
+   me <- elemById par                       --  !> ("looking for " ++ show par)
    case me of
      Nothing -> return  NoParam
      Just e ->  do
@@ -301,16 +307,15 @@ validate  w val=  do
 
 
 
-newtype Prefix= Prefix JSString deriving(Read,Show)
+
 -- | Generate a new string. Useful for creating tag identifiers and other attributes.
 --
 -- if the page is refreshed, the identifiers generated are the same.
+
+#ifdef ghcjs_HOST_OS
 genNewId ::  StateIO  JSString
 genNewId=  do
---      Log _ _ log <- getData `onNothing` return (Log False [] [])
-
       Prefix pre <- getData `onNothing` return (Prefix "")
-
       n <- genId
       return  $ pre <> (toJSString $ {-'p':  (show $ Prelude.length log)++-} ('n':show n))
 
@@ -321,13 +326,19 @@ getPrev= do
       Prefix pre <- getData `onNothing` return (Prefix "")
 
       return  $ pre <> (toJSString $ {-'p':  (show $ Prelude.length log)++-} ('n':show n))
+#else
+genNewId ::  StateIO  JSString
+genNewId= return $ pack ""
 
+getPrev ::  StateIO  JSString
+getPrev= return $ pack ""
+#endif
 
-addPrefix= Transient $ do
-   n <- genId
-   Prefix s <- getData `onNothing` return ( Prefix "")
-   setSData $ Prefix (toJSString( 's': show n)<> s)
-   return $ Just ()
+--addPrefix= Transient $ do
+--   n <- genId
+--   Prefix s <- getData `onNothing` return ( Prefix "")
+--   setSData $ Prefix (toJSString( 's': show n)<> s)
+--   return $ Just ()
 
 
 -- | get the next ideitifier that will be created by genNewId
@@ -726,7 +737,7 @@ widget <! attribs= Transient $ do
 
 
 instance  Attributable (Widget a) where
- (!) widget atrib = widget <! [atrib]
+ (!) widget atrib =    widget <! [atrib]
 
 
 
@@ -1065,20 +1076,20 @@ addSData y= do
 -- (but, at any moment, you can choose the element to be updated in the page using `at`)
 
 raiseEvent ::  IsEvent event  => Widget a -> event -> Widget a
-raiseEvent w event = do
-   r <- Transient $ do
+#ifdef ghcjs_HOST_OS
+raiseEvent w event = Transient $ do
        cont <- get --   >>= \c -> return c{mfSequence= mfSequence c -1}
        let iohandler :: EventData -> IO ()
            iohandler eventdata =do
                 runStateT (setSData eventdata >>  runCont' cont) cont        -- !!> "runCont INIT"
                 return ()                                             -- !!> "runCont finished"
        runView $  addEvent event iohandler <<< w
-   return r
+--   return r
    where
    runCont' cont= do
      setSData Repeat               -- !!> "INITCLOSURE"
      mr <- runClosure cont
-     return ()              -- !!> "ENDCLOSURE"
+
      case mr of
          Nothing -> return Nothing
          Just r -> runContinuation cont r
@@ -1088,7 +1099,15 @@ raiseEvent w event = do
    addEvent event iohandler be= Perch $ \e -> do
             e' <- build (span ! atr "name" "event" $ be) e
             buildHandler e' event iohandler
-            return e'
+            return e
+--            jsval <- getChildren e
+--            es <- fromJSValUncheckedListOf jsval
+--
+--            return $ Prelude.head es
+
+#else
+raiseEvent w _ = w
+#endif
 
 #ifdef ghcjs_HOST_OS
 foreign import javascript unsafe
@@ -1208,26 +1227,24 @@ runBody w= do
 
 
 
-#ifdef ghcjs_HOST_OS
--- | use this instead of `Transient.Move.runCloud'` when running in the browser
-runCloud' (Cloud mx)=  runTransient  mx
-#endif
+-- #ifdef ghcjs_HOST_OS
+---- | use this instead of `Transient.Move.runCloud'` when running in the browser
+--runCloudIO :: Cloud a -> IO ()
+--runCloudIO (Cloud mx)=  runTransient  mx >> return ()
+-- #endif
+--
+--teleport= do
+--    copyData $ Prefix ""
+--    copyData $ IdLine ""
+--    copyData $ Repeat
+--    copyCounter
+--    TL.teleport
+--    where
+--    copyCounter= do
+--      r <- local $ gets mfSequence
+--      onAll $ modify $ \s -> s{mfSequence= r}
+--
 
-teleport= do
-    copyData $ Prefix ""
-    copyData $ IdLine ""
-    copyData $ Repeat
-    copyCounter
-    TL.teleport
-    where
-    copyCounter= do
-      r <- local $ gets mfSequence
-      onAll $ modify $ \s -> s{mfSequence= r}
-
-
-
-newtype IdLine= IdLine JSString deriving(Read,Show)
-data Repeat= Repeat | RepeatHandled JSString deriving (Eq, Read, Show)
 
 render :: TransIO a -> TransIO a
 #ifdef ghcjs_HOST_OS
@@ -1252,22 +1269,22 @@ render  mx = do
 
      do
            re <- getSData        -- succed if is the result of an event
-           case re   !>  "event" of
+           case re    of                                               -- !>  "event" of
              Repeat -> do
               me <- liftIO $ elemById id2
               case me of
-                 Just e ->  (liftIO $ clearChildren e)               !> show ("clear1",id2)
+                 Just e ->  (liftIO $ clearChildren e)               -- !> show ("clear1",id2)
                  Nothing -> return ()
               setSData $ RepeatHandled id2
               delSData noHtml
              RepeatHandled  idx -> do
                me <- liftIO $ elemById idx
                case me of
-                 Just e ->  (liftIO $ clearChildren e)               !> show ("clear2",idx)
+                 Just e ->  (liftIO $ clearChildren e)               -- !> show ("clear2",idx)
                  Nothing -> return ()
                delSData Repeat
            return r
-        <|> return r             -- !!> "NO DEL"
+        <|> return r                                                 -- !!> "NO DEL"
 
 
 #else
@@ -1304,13 +1321,13 @@ at id method w= set <<< w
  set :: Perch -> Perch
  set render = liftIO $ case method of
      Insert -> do
-             forElems' id $ clear >> render
+             forElems_ id $ clear >> render
              return ()
      Append -> do
-             forElems' id render
+             forElems_ id render
              return ()
      Prepend -> do
-            forElems' id $ Perch $ \e -> do
+            forElems_ id $ Perch $ \e -> do
              jsval <- getChildren e
              es <- fromJSValUncheckedListOf jsval
              case es of
@@ -1366,9 +1383,11 @@ getHead= undefined
 #endif
 
 #ifdef ghcjs_HOST_OS
-foreign import javascript unsafe "$1.childNodes()" getChildren :: Elem -> IO JSVal
+foreign import javascript unsafe "$1.childNodes" getChildren :: Elem -> IO JSVal
 foreign import javascript unsafe "$2.insertBefore($1, $3)" addChildBefore :: Elem -> Elem -> Elem -> IO()
 #else
+
+type JSVal = ()
 getChildren :: Elem -> IO JSVal
 getChildren= undefined
 addChildBefore :: Elem -> Elem -> Elem -> IO()

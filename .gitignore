@@ -1,21 +1,20 @@
 Demos/old-trash
+Demos/db
 Test
 errlog
 .tcachedata
 .cabal-sandbox
-cabal.sandbox
+cabal.sandbox*
 favicon
 IDE.session
 MFlow.lkshf
 notes.txt
 notes.lhs
 dist
-*.hi
-*.o
-*.jsmod
+*.js*
 .cabal-sandbox
 cabal.sanbox.config
-
+.stack*
 # emacs stuff
 *~
 \#*\#
@@ -47,5 +46,3 @@ tramp
 *.key
 _darcs
 darcs*
-*.jsmod
-
