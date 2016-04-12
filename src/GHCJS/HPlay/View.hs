@@ -58,10 +58,11 @@ fromJSString, toJSString
 )  where
 
 
+
+
+
 import Transient.Base hiding (input,option,keep, keep')
-
-
-
+import Transient.Internals(runTransient,onNothing,getCont,runCont,EventF(..),StateIO,RemoteStatus(..))
 
 import Transient.Logged
 import Control.Applicative
@@ -1207,7 +1208,7 @@ runWidget' action e  = Transient $ do
 --      liftIO $ clearChildren e
       liftIO $ build render e
 
-      delSessionData render
+      delSData render
       return mx
 
 -- | add a header in the <header> tag
