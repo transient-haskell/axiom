@@ -62,7 +62,7 @@ fromJSString, toJSString
 
 
 import Transient.Base hiding (input,option,keep, keep')
-import Transient.Internals((!>),runTransient,runClosure, runContinuation, getPrevId,onNothing,getCont,runCont,EventF(..),StateIO,RemoteStatus(..))
+import Transient.Internals(runTransient,runClosure, runContinuation, getPrevId,onNothing,getCont,runCont,EventF(..),StateIO,RemoteStatus(..))
 
 import Transient.Logged
 import Control.Applicative
@@ -109,7 +109,7 @@ simpleWebApp port app=  do
                     else serverNode
 
     runCloudIO $ do
-          listen mynode
+          listen mynode <|> return()
           setData serverNode
           app
     return ()
@@ -253,7 +253,7 @@ fromValidated (NotValidated s err)= error $ "fromValidated: NotValidated "++ s
 getParam1 :: ( Typeable a, Read a, Show a)
           => JSString ->  StateIO (ParamResult Perch a)
 getParam1 par = do
-   me <- elemById par                         !> ("looking for " ++ show par)
+   me <- elemById par                     --    !> ("looking for " ++ show par)
    case me of
      Nothing -> return  NoParam
      Just e ->  do
