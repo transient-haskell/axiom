@@ -120,12 +120,7 @@ atServer proc= do
      server <- onAll getSData <|> error "server not set, use 'setData serverNode'"
      wormhole server $ atRemote proc
 
--- | if invoked from the server or browwser, run the computation in the other node  (need to be in a wormhole)
-atRemote proc= do
-     teleportMany
-     r <- proc
-     teleportMany
-     return r
+
 
 toJSString x=
      if typeOf x== typeOf (undefined :: String )
