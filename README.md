@@ -1,13 +1,10 @@
 ghcjs-hplay
 ==========
 
-Integration with Transient: Now Transient programs compiled with ghc can
-run in the browser and connect with the node that delivered it. Just point
-the browser to a transient node with http://server:`port
+This is the package [hplayground](https://github.com/agocorona/hplayground) compilable with [GHCJS](https://github.com/ghcjs), the Haskell-to-JavaScript compiler. It is also the Web user interface of [Transient](https://github.com/agocorona/transient). 
 
-widget computations can move to the server and back.  [see the ghcjs branch
-of the transient project](https://github.com/agocorona/transient/tree/ghcjs) where there is an example.
+Unlike hplayground, ghcjs-hplay It has full integration with Transient and can run widgets that run code in the server, the client or both.
 
+To see how it integrates with transient and how to create client-server applications see the web paragraphs of the [transient tutorial](https://github.com/agocorona/transient/wiki/Transient-tutorial)
 
-
-
+To see how to create client side applications and widgets (not yet with full server code integration), look for the  [hplayground](https://github.com/agocorona/hplayground) package.
