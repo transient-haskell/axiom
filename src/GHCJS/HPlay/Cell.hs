@@ -41,13 +41,13 @@ data Cell  a = Cell { mk :: Maybe a -> Widget a
 
 
 
--- a box cell with polimorphic value, identified by a string
+-- | a box cell with polimorphic value, identified by a string
 boxCell :: (Show a, Read a, Typeable a) => ElemID -> Cell a
-boxCell id = Cell{ mk= \mv -> getParam  id  mv
+boxCell id = Cell{ mk= \mv -> getParam  (Just id) "text" mv
                  , setter= \x -> do
                           me <- elemById id
                           case me of
-                            Just e -> setProp e "value" (toJSString $ show1 x)
+                            Just e -> (setProp e "value" (toJSString $ show1 x))
                             Nothing -> return ()
 
                  , getter= do
@@ -150,7 +150,7 @@ scell id  expr= Cell{ mk= \mv->   do
                              exprs <- readIORef rexprs
                              writeIORef rexprs $ M.insert id expr exprs
 
-                           r <- getParam  id  mv `fire` OnKeyUp
+                           r <- getParam  (Just id) "text"  mv `fire` OnKeyUp
                            liftIO $ do
                                 mod <- readIORef rmodified
                                 writeIORef rmodified  $ M.insert  id (const r)  mod

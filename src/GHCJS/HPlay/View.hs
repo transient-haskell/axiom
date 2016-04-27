@@ -7,7 +7,7 @@ module GHCJS.HPlay.View(
 Widget,
 
 -- * running it
-simpleWebApp, atServer, atRemote, runCloudIO,
+simpleWebApp, initWebApp, atServer, runCloudIO,
  runBody, addHeader, render,
 
 -- * re-exported
@@ -61,7 +61,7 @@ fromJSString, toJSString
 
 
 
-import Transient.Base hiding (input,option,keep, keep')
+import Transient.Base hiding (input,option)
 import Transient.Internals(runTransient,runClosure, runContinuation, getPrevId,onNothing,getCont,runCont,EventF(..),StateIO,RemoteStatus(..))
 
 import Transient.Logged
@@ -101,18 +101,22 @@ import GHCJS.Perch hiding (eventName,JsEvent(..),option,JSVal)
 -- | executes the application in the server and the Web browser.
 -- the browser must point to http://hostname:port where port is the first parameter
 simpleWebApp :: Integer -> Cloud x -> IO ()
-simpleWebApp port app=  do
-    serverNode  <- getWebServerNode port
+simpleWebApp port app=  keep $  initWebApp port app
+
+initWebApp :: Integer -> Cloud x -> TransIO ()
+initWebApp port app=  do
+    serverNode  <- liftIO $ getWebServerNode port
 
     let mynode = if isBrowserInstance
                     then createWebNode
                     else serverNode
 
-    runCloudIO $ do
-          listen mynode <|> return()
-          setData serverNode
-          app
-    return ()
+
+    runCloud $ do
+        listen mynode <|> return()
+        setData serverNode
+        app
+        return ()
 
 -- | if invoked from the browser, run A computation in the web server and return to the browser
 atServer :: Loggable a => Cloud a -> Cloud a
@@ -377,7 +381,7 @@ inputDouble =  getTextBox
 
 -- | Display a password box
 getPassword :: TransIO String
-getPassword = getParam  "password" Nothing
+getPassword = getParam Nothing "password" Nothing
 
 inputPassword ::   TransIO String
 inputPassword= getPassword
@@ -488,18 +492,20 @@ getTextBox
       Show a,
       Read a) =>
      Maybe a ->  TransIO a
-getTextBox ms  = getParam  "text" ms
+getTextBox ms  = getParam Nothing "text" ms
 
 
 getParam
   :: (Typeable a,
       Show a,
       Read a) =>
-      JSString -> Maybe a -> TransIO  a
-getParam  type1 mvalue= Transient $ getParamS  type1 mvalue
+      Maybe JSString -> JSString -> Maybe a -> TransIO  a
+getParam look type1 mvalue= Transient $ getParamS look type1 mvalue
 
-getParamS  type1 mvalue= do
-    tolook <-  genNewId
+getParamS look type1 mvalue= do
+    tolook <- case look of
+       Nothing  -> genNewId
+       Just n -> return n
 
     let nvalue x =  case x of
           Nothing -> mempty
@@ -618,7 +624,7 @@ inputReset= resetButton
 -- passive submit button. Submit a form, but it is not trigger any event.
 -- Unless you attach it with `raiseEvent`
 submitButton ::  (Read a, Show a, Typeable a) => a -> TransIO a
-submitButton label=  getParam  "submit" $ Just label
+submitButton label=  getParam Nothing "submit" $ Just label
 
 
 inputSubmit ::  (Read a, Show a, Typeable a) => a -> TransIO a
@@ -1288,7 +1294,9 @@ at id method w= set <<< w
 
 foreign import javascript unsafe  "$1[$2].toString()" getProp :: Elem -> JSString -> IO JSString
 
-foreign import javascript unsafe  "$1[$2]= $3" setProp :: Elem -> JSString -> JSString -> IO ()
+
+
+foreign import javascript unsafe  "$1[$2] = $3" setProp :: Elem -> JSString -> JSString -> IO ()
 
 foreign import javascript unsafe  "alert($1)" alert ::  JSString -> IO ()
 
