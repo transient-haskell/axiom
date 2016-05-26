@@ -12,7 +12,7 @@
 --
 -----------------------------------------------------------------------------
 {-# LANGUAGE TypeSynonymInstances, FlexibleInstances, OverloadedStrings, CPP #-}
-module GHCJS.HPlay.Cell  where
+module GHCJS.HPlay.Cell(Cell(..),boxCell,(.=),get,mkscell, gcell, calc)  where
 import Transient.Base
 import GHCJS.HPlay.View
 import Data.Typeable
@@ -41,7 +41,8 @@ data Cell  a = Cell { mk :: Maybe a -> Widget a
 
 
 
--- | a box cell with polimorphic value, identified by a string
+-- | creates a input box cell with polimorphic value, identified by a string.
+-- the cell can be updated programatically
 boxCell :: (Show a, Read a, Typeable a) => ElemID -> Cell a
 boxCell id = Cell{ mk= \mv -> getParam  (Just id) "text" mv
                  , setter= \x -> do
@@ -69,7 +70,8 @@ boxCell id = Cell{ mk= \mv -> getParam  (Just id) "text" mv
             then unsafeCoerce x
             else show x
 
-
+instance Attributable (Cell a) where
+ (Cell mk setter getter) ! atr = Cell (\ma -> mk ma ! atr) setter getter
 
 
 
@@ -113,7 +115,9 @@ infixr 0 .=  -- , ..=
 -- The recursive Cell calculation DSL BELOW ------
 
 
--- | get a cell for the spreadsheet expression
+-- | within a `mkscell` formula, `gcell` get the the value of another cell using his name.
+--
+-- see http://tryplayg.herokuapp.com/try/spreadsheet.hs/edit
 gcell ::  Num a => String -> M.Map String a -> a
 gcell n= \vars -> case M.lookup n vars of
     Just exp -> inc n  exp
@@ -142,9 +146,14 @@ rmodified :: IORef (M.Map JSString (Expr Float))
 rmodified= unsafePerformIO $ newIORef M.empty
 
 
-
+-- | make spreadsheet cell. a spreadsheet cell is an input-output box that takes input values from
+-- the user, has an expression associated and output the result value after executing `calc`
+--
+-- see http://tryplayg.herokuapp.com/try/spreadsheet.hs/edit
+mkscell :: JSString -> Maybe Float -> Expr Float -> TransIO Float
 mkscell name val expr= mk (scell name expr) val
 
+scell :: JSString -> Expr Float -> Cell Float
 scell id  expr= Cell{ mk= \mv->   do
                            liftIO $ do
                              exprs <- readIORef rexprs
@@ -177,7 +186,9 @@ scell id  expr= Cell{ mk= \mv->   do
             else show x
 
 
-
+-- | executes the spreadsheet adjusting the vaules of the cells created with `mkscell` and solving loops
+--
+-- see http://tryplayg.herokuapp.com/try/spreadsheet.hs/edit
 calc :: Widget ()
 calc= do
   nvs <- liftIO $ readIORef rmodified

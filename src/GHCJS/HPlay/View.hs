@@ -7,7 +7,7 @@ module GHCJS.HPlay.View(
 Widget,
 
 -- * running it
-simpleWebApp, initWebApp, atServer, runCloudIO,
+simpleWebApp, initWebApp, onServer, onBrowser, runCloudIO,
  runBody, addHeader, render,
 
 -- * re-exported
@@ -100,10 +100,10 @@ import GHCJS.Perch hiding (eventName,JsEvent(..),option,JSVal)
 
 -- | executes the application in the server and the Web browser.
 -- the browser must point to http://hostname:port where port is the first parameter
-simpleWebApp :: Integer -> Cloud x -> IO ()
+simpleWebApp :: Integer -> Cloud () -> IO ()
 simpleWebApp port app=  keep $  initWebApp port app
 
-initWebApp :: Integer -> Cloud x -> TransIO ()
+initWebApp :: Integer -> Cloud () -> TransIO ()
 initWebApp port app=  do
     serverNode  <- liftIO $ getWebServerNode port
 
@@ -114,15 +114,26 @@ initWebApp port app=  do
 
     runCloud $ do
         listen mynode <|> return()
-        setData serverNode
-        app
+        wormhole serverNode app
         return ()
 
--- | if invoked from the browser, run A computation in the web server and return to the browser
-atServer :: Loggable a => Cloud a -> Cloud a
-atServer proc= do
-     server <- onAll getSData <|> error "server not set, use 'setData serverNode'"
-     wormhole server $ atRemote proc
+-- only execute if is the browser but can call the server. Otherwise return empty
+onBrowser :: Cloud a -> Cloud a
+onBrowser x= do
+     r <- local $  return isBrowserInstance
+     if r then x else empty
+
+-- only executes the computaion if it is in the server, but the computation can call the browser. Otherwise return empty
+onServer :: Cloud a -> Cloud a
+onServer x= do
+     r <- local $  return isBrowserInstance
+     if not r then x else empty
+
+---- | if invoked from the browser, run A computation in the web server and return to the browser
+--atServer :: Loggable a => Cloud a -> Cloud a
+--atServer proc= do
+--     server <- onAll getSData <|> error "server not set, use 'setData serverNode'"
+--     runAt server  proc
 
 
 
@@ -318,6 +329,7 @@ genNewId=  do
       Prefix pre <- getData `onNothing` return (Prefix "")
       n <- genId
       return  $ pre <> (toJSString $ {-'p':  (show $ Prelude.length log)++-} ('n':show n))
+--      return  $  (toJSString $ {-'p':  (show $ Prelude.length log)++-} ('n':show n))
 
 getPrev ::  StateIO  JSString
 getPrev= do
@@ -1120,7 +1132,7 @@ runWidgetId' ac id1= Transient  runWidget1
  where
  runWidget1 = do
 
-   me <- liftIO $ elemById id1                         -- !> ("RUNWIDGETID", id1)
+   me <- liftIO $ elemById id1                        --  !> ("RUNWIDGETID", id1)
    case me of
      Just e ->  do
 
@@ -1130,7 +1142,7 @@ runWidgetId' ac id1= Transient  runWidget1
 
      Nothing -> -- runTrans ac !!> ( "ID NOT FOUND " ++ show id) -- runTrans ac
          do
-            body <- liftIO  getBody             -- !!> ( "ID NOT FOUND " ++ show id1)
+            body <- liftIO  getBody                   --  !> ( "ID NOT FOUND " ++ show id1)
             liftIO $ build (span ! id id1 $ noHtml) body
 
             runWidget1
@@ -1198,7 +1210,7 @@ render :: TransIO a -> TransIO a
 render  mx = do
 
        id1 <- Transient $ do
-                 me <- getData               -- !!> "RENDER"
+                 me <- getData              -- !> "RENDER"
                  case me of
                      Just (IdLine id1) -> return $ Just id1
                      Nothing ->  Just <$> genNewId
