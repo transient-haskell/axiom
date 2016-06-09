@@ -11,9 +11,12 @@
 -- |
 --
 -----------------------------------------------------------------------------
-{-# LANGUAGE TypeSynonymInstances, FlexibleInstances, OverloadedStrings, CPP #-}
-module GHCJS.HPlay.Cell(Cell(..),boxCell,(.=),get,mkscell, gcell, calc)  where
+{-# LANGUAGE TypeSynonymInstances, FlexibleInstances, OverloadedStrings, CPP, ScopedTypeVariables #-}
+module GHCJS.HPlay.Cell(Cell(..),boxCell,(.=),get,mkscell,scell, gcell, calc)  where
 import Transient.Base
+import Transient.Move
+import Transient.Internals (runTransState)
+
 import GHCJS.HPlay.View
 import Data.Typeable
 import Unsafe.Coerce
@@ -25,11 +28,17 @@ import Control.Monad
 import Data.Maybe
 import Control.Exception
 import Data.List
-
 import GHCJS.Perch
+import Control.Exception
 
 #ifdef ghcjs_HOST_OS
-import Data.JSString
+
+import Data.JSString hiding (empty)
+
+#else
+
+type JSString = String
+
 #endif
 
 data Cell  a = Cell { mk :: Maybe a -> Widget a
@@ -48,27 +57,32 @@ boxCell id = Cell{ mk= \mv -> getParam  (Just id) "text" mv
                  , setter= \x -> do
                           me <- elemById id
                           case me of
-                            Just e -> (setProp e "value" (toJSString $ show1 x))
+                            Just e ->  setProp e "value" (toJSString $ show1 x)
                             Nothing -> return ()
 
-                 , getter= do
-                          me <- elemById id
-                          case me of
-                            Nothing -> return Nothing
-                            Just e -> getit}
-    where
-    getit= withElem id $ \e ->  getProp e "value" >>=  return . read1
-    read1 s= if typeOf(typeIO getit) /= typestring
-               then case readsPrec 0 $ fromJSString s  of
-                   [(v,_)] ->  Just v
-                   _  -> Nothing
-               else Just $ unsafeCoerce s
-    typeIO :: IO(Maybe a) -> a
-    typestring= typeOf (undefined :: String)
-    typeIO = undefined
-    show1 x= if typeOf x== typestring
-            then unsafeCoerce x
-            else show x
+                 , getter= getit id}
+
+getit id = withElem id $ \e -> do
+  ms <- getValue e
+  case ms of
+    Nothing -> return Nothing
+    Just s  -> return $ read1  s
+  where
+  read1 s=
+      if typeOf(typeIO getit) /= typestring
+           then case readsPrec 0  s  of
+               [(v,_)] -> v `seq` Just v
+               _       -> Nothing
+           else Just $ unsafeCoerce s
+
+typeIO :: (ElemID -> IO (Maybe a)) -> a
+typeIO = undefined
+
+typestring= typeOf (undefined :: String)
+
+show1 x= if typeOf x== typestring
+        then unsafeCoerce x
+        else show x
 
 instance Attributable (Cell a) where
  (Cell mk setter getter) ! atr = Cell (\ma -> mk ma ! atr) setter getter
@@ -118,10 +132,12 @@ infixr 0 .=  -- , ..=
 -- | within a `mkscell` formula, `gcell` get the the value of another cell using his name.
 --
 -- see http://tryplayg.herokuapp.com/try/spreadsheet.hs/edit
-gcell ::  Num a => String -> M.Map String a -> a
-gcell n= \vars -> case M.lookup n vars of
+gcell ::   JSString -> TransIO Double
+gcell n= do
+  vars <- liftIO $ readIORef rvars
+  case M.lookup n vars  of
     Just exp -> inc n  exp
-    Nothing -> error $ "cell error in: "++n
+    Nothing -> error $ "cell not found: "++ show n
   where
   inc n exp= unsafePerformIO $ do
      tries <- readIORef rtries
@@ -130,120 +146,162 @@ gcell n= \vars -> case M.lookup n vars of
           writeIORef rtries  (tries+1)
           return exp
 
-       else  error n
+       else  throw Loop
 
+data Loop= Loop deriving (Show,Typeable)
 
--- a parameter is a function of all of the rest parameters
-type Expr a = M.Map JSString a -> a
+instance Exception Loop
+
+-- a parameter is a function of all of the rest
+type Expr a = TransIO a
 
 rtries= unsafePerformIO $ newIORef $ (0::Int)
-maxtries=  3* (M.size $ unsafePerformIO $ readIORef rexprs)
+maxtries=  3 * (M.size $ unsafePerformIO $ readIORef rexprs)
 
-rexprs :: IORef (M.Map JSString (Expr Float))
-rexprs= unsafePerformIO $ newIORef M.empty
+rexprs :: IORef (M.Map JSString (Expr Double))
+rexprs= unsafePerformIO $ newIORef M.empty      -- initial expressions
 
-rmodified :: IORef (M.Map JSString (Expr Float))
-rmodified= unsafePerformIO $ newIORef M.empty
+rvars :: IORef (M.Map JSString (Expr Double))
+rvars= unsafePerformIO $ newIORef M.empty        -- expressions actually used for each cell.
+                                                -- initially, A mix of reexprs and rmodified
+                                                -- and also contains the result of calculation
+
+rmodified :: IORef (M.Map JSString (Expr Double))
+rmodified= unsafePerformIO $ newIORef M.empty    -- cells modified by the user or by the loop detection mechanism
 
 
--- | make spreadsheet cell. a spreadsheet cell is an input-output box that takes input values from
--- the user, has an expression associated and output the result value after executing `calc`
+-- | make a spreadsheet cell. a spreadsheet cell is an input-output box that takes input values from
+-- the user, has an expression associated and display the result value after executing `calc`
 --
 -- see http://tryplayg.herokuapp.com/try/spreadsheet.hs/edit
-mkscell :: JSString -> Maybe Float -> Expr Float -> TransIO Float
+mkscell :: JSString -> Maybe Double -> Expr Double -> TransIO Double
 mkscell name val expr= mk (scell name expr) val
 
-scell :: JSString -> Expr Float -> Cell Float
-scell id  expr= Cell{ mk= \mv->   do
-                           liftIO $ do
+both mx= local $ runCloud mx <** runCloud ( atRemote  mx)
+
+scell :: JSString -> Expr Double -> Cell Double
+scell id  expr= Cell{ mk= \mv->  runCloud $ do
+                           both $ lliftIO $ do
                              exprs <- readIORef rexprs
                              writeIORef rexprs $ M.insert id expr exprs
 
-                           r <- getParam  (Just id) "text"  mv `fire` OnKeyUp
-                           liftIO $ do
-                                mod <- readIORef rmodified
-                                writeIORef rmodified  $ M.insert  id (const r)  mod
+                           r <- local $ getParam (Just id) "text"  mv `fire` OnKeyUp
+
+                           both $ lliftIO $  do
+                               mod <-  readIORef rmodified
+                               writeIORef rmodified  $ M.insert  id (return  r)  mod
                            return r
-                         `continuePerch`  id
+                       --  `continuePerch`  id
 
 
 
-                 , setter= \x -> withElem id $ \e -> setProp e "value" (toJSString $ show1 x)
+                     , setter= \x -> withElem id $ \e -> setProp e "value" (toJSString $ show1 x)
 
-                 , getter= getit}
-    where
+                     , getter= getit id}
 
-    getit= withElem id $ \e -> getProp e "value" >>= return . read1
-    read1 s= if typeOf(typeIO getit) /= typeOf (undefined :: String)
-               then case readsPrec 0 $ fromJSString s  of
-                   [(v,_)] ->  Just v
-                   _  -> Nothing
-               else unsafeCoerce s
-    typeIO :: IO(Maybe a) -> a
-    typeIO = undefined
-    show1 x= if typeOf x== typeOf (undefined :: String)
-            then unsafeCoerce x
-            else show x
+
+
 
 
 -- | executes the spreadsheet adjusting the vaules of the cells created with `mkscell` and solving loops
 --
 -- see http://tryplayg.herokuapp.com/try/spreadsheet.hs/edit
-calc :: Widget ()
-calc= do
-  nvs <- liftIO $ readIORef rmodified
-  when (not $ M.null nvs) $ do
-    values <-liftIO $ handle doit calc1
-    mapM_ (\(n,v) -> boxCell n .= v)  values
-  liftIO $ writeIORef rmodified M.empty
-  where
-  -- http://blog.sigfpe.com/2006/11/from-l-theorem-to-spreadsheet.html
-  -- loeb ::  Functor f => f (t -> a) -> f a
-  loeb :: M.Map JSString (Expr a) -> M.Map JSString a
-  loeb x = fmap (\a -> a (loeb  x)) x
+calc :: TransIO ()
+calc= runCloud $ both $ local $ do
+  st <- getCont
+  liftIO  $ handle (removeVar st) $ run' st $  do
+          nvs <- liftIO $ readIORef rmodified
 
-  calc1  :: IO [(JSString,Float)]
+          when (not $ M.null nvs) $ do
+            values <-  calc1
+            mapM_ (\(n,v) -> boxCell n .= v)  values
+          liftIO $ writeIORef rmodified M.empty
+--   return ()
+  where
+  run' st x=  runTransState st x >> return ()
+
+
+  checktries x= unsafePerformIO $ do
+         n <-  readIORef rtries
+         if (n> maxtries) then  error "loop"
+                          else writeIORef rtries $ n+1
+
+
+  calc1  :: TransIO [(JSString,Double)]
   calc1= do
-    writeIORef rtries 0
+    liftIO $ writeIORef rtries 0
     cells <- liftIO $ readIORef rexprs
     nvs   <- liftIO $ readIORef rmodified
-    let mvalues = M.union nvs  cells
-        evalues = loeb mvalues
+    liftIO $ writeIORef rvars $ M.union nvs cells
+    solve
 
-    toStrict $ M.toList evalues
 
-  toStrict xs = print xs >> return xs
+
 
   circular n= "loop detected in cell: "++ show n  ++ " please fix the error"
 
-  doit :: SomeException -> IO [(JSString,Float)]
-  doit e= do
+--  removeVar :: EventF -> SomeException -> IO () -- [(JSString,Double)]
+  removeVar st  = \(e:: Loop) -> handle (removeVar st) $ do
+
+
     nvs <- readIORef rmodified
     exprs <- readIORef rexprs
+
     case  M.keys exprs \\ M.keys nvs of
       [] -> do
-         let Just (ErrorCall n)= fromException e
-         let err= circular n
-         alert $ toJSString err
-         error err
+
+         error "no more input variables"
       (name:_) -> do
-         mv <- getter $ boxCell name
+         mv <-  getit name
+
          case mv of
-            Nothing -> return []
-            Just v -> do
-                writeIORef rmodified  $ M.insert name (const v) nvs
-                calc1
+            Nothing -> return ()
+            Just v  -> do
+                writeIORef rmodified  $ M.insert name ( return v) nvs
+                return ()
+                runTransState st calc
+                return ()
+
+  -- http://blog.sigfpe.com/2006/11/from-l-theorem-to-spreadsheet.html
+  -- loeb ::  Functor f => f (t -> a) -> f a
+  --  loeb x = fmap (\a ->  a (loeb  x)) x
+  -- loeb :: [([a]-> a)] -> [a]
+  -- loeb x=  map (\f ->  f (loeb  x)) x
+
+--loeb :: [([a] -> IO a)] -> IO [a]
+--loeb x= mapM (\f -> loeb x >>= f) x -- fail does not terminate
 
 
-instance (Num a,Eq a,Fractional a) =>Fractional (x -> a)where
-     f / g = \x -> f x / g x
+
+
+--loeb x=  map (\f ->  f (loeb  x)) x
+
+--solve  :: M.Map JSString (TransIO a) -> TransIO (M.Map JSString a)
+solve :: TransIO [(JSString,Double)]
+solve = do
+ vars <- liftIO $ readIORef rvars
+ mapM (solve1 vars) $ M.toList vars
+ where
+ solve1 vars (k,f)= do
+    x <- f
+
+    liftIO $ writeIORef rvars $ M.insert k (return x) vars
+    return (k,x)
+
+
+
+instance (Num a,Eq a,Fractional a) =>Fractional (TransIO a)where
+     mf / mg = do
+        f <- mf
+        g <- mg
+        return $ f  / g
      fromRational = error "fromRational not implemented"
 
 
-instance (Num a,Eq a) => Num (x -> a) where
-     fromInteger = const . fromInteger
-     f + g = \x -> f x + g x
-     f * g = \x -> f x * g x
-     negate = (negate .)
-     abs = (abs .)
-     signum = (signum .)
+instance (Num a,Eq a) => Num (TransIO a) where
+     fromInteger = return . fromInteger
+     f + g = f >>= \x -> g >>= \y -> return $ x + y
+     f * g = f >>= \x -> g >>= \y -> return $ x * y
+     negate f = f >>= return . negate
+     abs f =  f >>= return . abs
+     signum f =  f >>= return . signum

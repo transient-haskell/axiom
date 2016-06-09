@@ -8,7 +8,7 @@ Widget,
 
 -- * running it
 simpleWebApp, initWebApp, onServer, onBrowser, runCloudIO,
- runBody, addHeader, render,
+ runBody, addHeader, render,runWidget', addSData,
 
 -- * re-exported
 module Control.Applicative,
@@ -54,7 +54,7 @@ BrowserEvent(..)
 ,FormInput(..),
 
 ElemID, elemById,withElem,getProp,setProp, alert,
-fromJSString, toJSString
+fromJSString, toJSString, getValue
 )  where
 
 
@@ -95,14 +95,29 @@ import GHCJS.Foreign.Callback -- as CB
 import Data.JSString as JS hiding (span,empty,strip)
 #else
 import Transient.Move hiding (pack,JSString)
+
 import GHCJS.Perch hiding (eventName,JsEvent(..),option,JSVal)
+
+#endif
+
+#ifndef ghcjs_HOST_OS
+
+type JSString = String
+
 #endif
 
 -- | executes the application in the server and the Web browser.
--- the browser must point to http://hostname:port where port is the first parameter
+-- the browser must point to http://hostname:port where port is the first parameter.
+-- It creates a wormhole to the server.
+-- The code of the program after `simpleWebApp` run in the browser unless `teleport` translates the execution to the server.
+-- To run something in the server and get the result back to the browser, use  `atRemote`
+-- This last also works in the other side; If the application was teleported to the server, `atRemote` will
+-- execute his parameter in the browser.
 simpleWebApp :: Integer -> Cloud () -> IO ()
-simpleWebApp port app=  keep $  initWebApp port app
+simpleWebApp port app =  keep $ initWebApp port app
 
+-- | use this instead of smpleWebApp when you have to do some initializations in the server prior to the
+-- initialization of the web server. Otherwise, the behaviour is the same.
 initWebApp :: Integer -> Cloud () -> TransIO ()
 initWebApp port app=  do
     serverNode  <- liftIO $ getWebServerNode port
@@ -111,13 +126,13 @@ initWebApp port app=  do
                     then createWebNode
                     else serverNode
 
-
     runCloud $ do
         listen mynode <|> return()
         wormhole serverNode app
         return ()
 
--- only execute if is the browser but can call the server. Otherwise return empty
+-- only execute if the the program is executing in the browser. The code inside can contain calls to the server.
+-- Otherwise return empty (so it stop the computation).
 onBrowser :: Cloud a -> Cloud a
 onBrowser x= do
      r <- local $  return isBrowserInstance
@@ -152,12 +167,20 @@ fromJSString s= x
      | otherwise = read $ unpack s            -- !> "readunpack"
 
 getValue :: MonadIO m => Elem -> m (Maybe String)
+getName :: MonadIO m => Elem -> m (Maybe String)
 #ifdef ghcjs_HOST_OS
 getValue e= liftIO $ do
    s <- getValueDOM e
    fromJSVal s -- return $ JS.unpack s
+
+
+
+getName e= liftIO $ do
+   s <- getNameDOM e
+   fromJSVal s
 #else
 getValue= undefined
+getName= undefined
 #endif
 
 elemById :: MonadIO m  => JSString -> m (Maybe Elem)
@@ -644,11 +667,12 @@ inputSubmit= submitButton
 
 -- | active button. When clicked, return the first parameter
 wbutton :: a -> JSString -> Widget a
-wbutton x label=
-    let label'= toJSString label in do
-        input  ! atr "type" "submit" ! id   label' ! atr "value" label `pass` OnClick
+wbutton x label=Transient $ do
+     idn <- genNewId
+     runTrans $ do
+        input  ! atr "type" "submit" ! id   idn ! atr "value" label `pass` OnClick
         return x
-      `continuePerch`  label'
+      `continuePerch`  idn
 
 
 -- | when creating a complex widget with many tags, this call indentifies which tag will receive the attributes of the (!) operator.
@@ -659,7 +683,11 @@ continuePerch w eid=  c <<< w
          build f e'
          elemid eid
 
-      elemid id= elemById id >>= return . fromJust
+      elemid id= elemById id >>=  return . fromJust
+
+--      child  e = do
+--             jsval <- firstChild e
+--             fromJSValUnchecked jsval
 
 
 -- | Present a link. Return the first parameter when clicked
@@ -727,7 +755,7 @@ infixr 6 <++
 --
 -- @bold << "enter name" ++> getString Nothing @
 --
--- It has a infix prority: @infixr 6@ higuer that '<<<' and most other operators
+-- It has a infix prority: @infixr 6@ higher that '<<<' and most other operators
 (++>) :: Perch -> TransIO a -> TransIO a
 html ++> w =
   Transient $ do
@@ -756,14 +784,20 @@ instance  Attributable (Widget a) where
               delData rest
               mx <- runView widget
               fs <- getData `onNothing` return (mempty :: Perch)
-              setData  $ rest <> ((child fs) ! atrib)
+              setData  $ do rest ; (child $ mspan fs) ! atrib :: Perch
               return mx
-   where
-   child render = Perch $ \e -> do
-             e' <- build render e
+     where
+     child render = Perch $ \e -> do
+             e'    <- build render e
              jsval <- firstChild e'
              fromJSValUnchecked jsval
 
+mspan cont=  Perch $ \e -> do
+        n <- liftIO $ getName e
+--        alert $ toJSString $ show n
+        if n == Just "EVENT"
+           then build cont e
+           else build (nelem "event" `child` cont) e
 
 -- | Empty widget that does not validate. May be used as \"empty boxes\" inside larger widgets.
 --
@@ -773,7 +807,7 @@ noWidget= Control.Applicative.empty
 
 -- | Render raw view formatting. It is useful for displaying information.
 wraw ::  Perch -> Widget ()
-wraw x=  x ++> return ()
+wraw x= addSData x >> return () -- x ++> return ()
 
 -- |  wraw synonym
 rawHtml= wraw
@@ -1034,6 +1068,11 @@ addSData y= do
   setData (x <> y)
 
 
+newtype IdLine= IdLine JSString deriving(Read,Show)
+data Repeat= Repeat | RepH JSString deriving (Eq, Read, Show)
+
+
+
 
 
 -- | triggers the event that happens in a widget. The effects are the following:
@@ -1078,7 +1117,7 @@ raiseEvent w event = Transient $ do
        -- create an element and add any event handler to it.
    addEvent :: IsEvent a =>  a -> (EventData -> IO()) -> Perch -> Perch
    addEvent event iohandler be= Perch $ \e -> do
-            e' <- build (span ! atr "name" "event" $ be) e
+            e' <- build (mspan be) e
             buildHandler e' event iohandler
             return e
 --            jsval <- getChildren e
@@ -1132,7 +1171,7 @@ runWidgetId' ac id1= Transient  runWidget1
  where
  runWidget1 = do
 
-   me <- liftIO $ elemById id1                        --  !> ("RUNWIDGETID", id1)
+   me <- liftIO $ elemById id1                      --    !> ("RUNWIDGETID", id1)
    case me of
      Just e ->  do
 
@@ -1160,6 +1199,7 @@ runWidget action e = do
 
 runWidget' :: Widget b -> Elem   -> TransIO b
 runWidget' action e  = Transient $ do
+      liftIO $ clearChildren e    -- !> "clear 0"
       mx <- runView action                          -- !> "runVidget'"
       render <- getData `onNothing` (return  noHtml)
 
@@ -1177,7 +1217,7 @@ addHeader format= do
     return ()
 
 
--- | run the widget as the body of the HTML
+-- | run the widget as the body of the HTML. It adds the rendering to the body of the document.
 runBody :: Widget a -> IO (Maybe a)
 runBody w= do
   body <- getBody
@@ -1204,7 +1244,12 @@ runBody w= do
 --      onAll $ modify $ \s -> s{mfSequence= r}
 --
 
-
+-- | executes the computation and  add the effect of "hanging" the generated rendering from the one generated by the
+-- previous `render` sentence, or from the body of the document, if there isn't any. If an event happens within
+-- the `render` parameter, it deletes the rendering of all subsequent ones.
+-- so that the sucessive sequence of `render` in the code will reconstruct them again.
+-- However the rendering of elements combined with `<|>` or `<>` or `<*>`  are independent.
+-- This allows for full dynamic and composable client-side Web apps.
 render :: TransIO a -> TransIO a
 #ifdef ghcjs_HOST_OS
 render  mx = do
@@ -1220,13 +1265,12 @@ render  mx = do
        setData $ IDNUM n
 
        setData $ IdLine id1
-       runWidgetId'  (mx' id1 id2 <++ (span ! id id2 $ noHtml)) id1
+       runWidgetId' (mx' id2 <++ (span ! id id2 $ noHtml)) id1
 
 
 
   where
-  mx' id1 id2= do
---     setData $ IdLine id1
+  mx' id2= do
      r <- mx                           -- !> "mx"
      addPrefix
      (setData $ IdLine id2)            -- !!> show ("set",id2)
@@ -1236,16 +1280,16 @@ render  mx = do
            case re    of                                               -- !>  "event" of
              Repeat -> do
               me <- liftIO $ elemById id2
-              case me of
-                 Just e ->  (liftIO $ clearChildren e)               -- !> show ("clear1",id2)
-                 Nothing -> return ()
+--              case me of
+--                 Just e ->  (liftIO $ clearChildren e)                !> show ("clear1",id2)
+--                 Nothing -> return ()
               setData $ RepH id2
               delData noHtml
              RepH  idx -> do
                me <- liftIO $ elemById idx
-               case me of
-                 Just e ->  (liftIO $ clearChildren e)               -- !> show ("clear2",idx)
-                 Nothing -> return ()
+--               case me of
+--                 Just e ->  (liftIO $ clearChildren e)                !> show ("clear2",idx)
+--                 Nothing -> return ()
                delData Repeat
            return r
         <|> return r                                                 -- !!> "NO DEL"
@@ -1317,7 +1361,7 @@ foreign import javascript unsafe  "alert($1)" alert ::  JSString -> IO ()
 foreign import javascript unsafe  "document.getElementById($1)" elemByIdDOM  :: JSString -> IO JSVal
 
 foreign import javascript unsafe  "$1.value" getValueDOM :: Elem -> IO JSVal
-
+foreign import javascript unsafe  "$1.tagName" getNameDOM :: Elem -> IO JSVal
 #else
 unpack= undefined
 getProp :: Elem -> JSString -> IO JSString
