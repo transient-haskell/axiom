@@ -177,7 +177,7 @@ rmodified= unsafePerformIO $ newIORef M.empty    -- cells modified by the user o
 mkscell :: JSString -> Maybe Double -> Expr Double -> TransIO Double
 mkscell name val expr= mk (scell name expr) val
 
-both mx= local $ runCloud mx <** runCloud ( atRemote  mx)
+both mx= local $ runCloud mx <** runCloud ( atRemote  $ mx)
 
 scell :: JSString -> Expr Double -> Cell Double
 scell id  expr= Cell{ mk= \mv->  runCloud $ do
@@ -207,7 +207,7 @@ scell id  expr= Cell{ mk= \mv->  runCloud $ do
 --
 -- see http://tryplayg.herokuapp.com/try/spreadsheet.hs/edit
 calc :: TransIO ()
-calc= runCloud $ both $ local $ do
+calc=  do
   st <- getCont
   liftIO  $ handle (removeVar st) $ run' st $  do
           nvs <- liftIO $ readIORef rmodified
