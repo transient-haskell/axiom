@@ -1,0 +1,14 @@
+
+flags: {}
+
+packages:
+
+- '.'
+
+- ../transient
+- ../transient-universe
+- ../ghcjs-perch
+
+extra-deps: [transient-0.2, transient-universe-0.2,ghcjs-perch-0.2.0.0]
+
+resolver: lts-3.1

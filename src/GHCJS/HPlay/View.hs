@@ -7,7 +7,8 @@ module GHCJS.HPlay.View(
 Widget,
 
 -- * running it
-simpleWebApp, initWebApp, onServer, onBrowser, runCloudIO,
+module Transient.Move.Utils,
+
  runBody, addHeader, render,runWidget', addSData,
 
 -- * re-exported
@@ -63,7 +64,7 @@ fromJSString, toJSString, getValue
 
 import Transient.Base hiding (input,option)
 import Transient.Internals(runTransient,runClosure, runContinuation, getPrevId,onNothing,getCont,runCont,EventF(..),StateIO,RemoteStatus(..))
-
+import Transient.Move.Utils
 import Transient.Logged
 import Control.Applicative
 import Data.Monoid
@@ -106,43 +107,7 @@ type JSString = String
 
 #endif
 
--- | executes the application in the server and the Web browser.
--- the browser must point to http://hostname:port where port is the first parameter.
--- It creates a wormhole to the server.
--- The code of the program after `simpleWebApp` run in the browser unless `teleport` translates the execution to the server.
--- To run something in the server and get the result back to the browser, use  `atRemote`
--- This last also works in the other side; If the application was teleported to the server, `atRemote` will
--- execute his parameter in the browser.
-simpleWebApp :: Integer -> Cloud () -> IO ()
-simpleWebApp port app =  keep $ initWebApp port app
 
--- | use this instead of smpleWebApp when you have to do some initializations in the server prior to the
--- initialization of the web server. Otherwise, the behaviour is the same.
-initWebApp :: Integer -> Cloud () -> TransIO ()
-initWebApp port app=  do
-    serverNode  <- liftIO $ getWebServerNode port
-
-    let mynode = if isBrowserInstance
-                    then createWebNode
-                    else serverNode
-
-    runCloud $ do
-        listen mynode <|> return()
-        wormhole serverNode app
-        return ()
-
--- only execute if the the program is executing in the browser. The code inside can contain calls to the server.
--- Otherwise return empty (so it stop the computation).
-onBrowser :: Cloud a -> Cloud a
-onBrowser x= do
-     r <- local $  return isBrowserInstance
-     if r then x else empty
-
--- only executes the computaion if it is in the server, but the computation can call the browser. Otherwise return empty
-onServer :: Cloud a -> Cloud a
-onServer x= do
-     r <- local $  return isBrowserInstance
-     if not r then x else empty
 
 ---- | if invoked from the browser, run A computation in the web server and return to the browser
 --atServer :: Loggable a => Cloud a -> Cloud a
@@ -1199,7 +1164,7 @@ runWidget action e = do
 
 runWidget' :: Widget b -> Elem   -> TransIO b
 runWidget' action e  = Transient $ do
-      liftIO $ clearChildren e    -- !> "clear 0"
+--      liftIO $ clearChildren e    -- !> "clear 0"
       mx <- runView action                          -- !> "runVidget'"
       render <- getData `onNothing` (return  noHtml)
 
@@ -1280,16 +1245,16 @@ render  mx = do
            case re    of                                               -- !>  "event" of
              Repeat -> do
               me <- liftIO $ elemById id2
---              case me of
---                 Just e ->  (liftIO $ clearChildren e)                !> show ("clear1",id2)
---                 Nothing -> return ()
+              case me of
+                 Just e ->  (liftIO $ clearChildren e)             --   !> show ("clear1",id2)
+                 Nothing -> return ()
               setData $ RepH id2
               delData noHtml
              RepH  idx -> do
                me <- liftIO $ elemById idx
---               case me of
---                 Just e ->  (liftIO $ clearChildren e)                !> show ("clear2",idx)
---                 Nothing -> return ()
+               case me of
+                 Just e ->  (liftIO $ clearChildren e)             --   !> show ("clear2",idx)
+                 Nothing -> return ()
                delData Repeat
            return r
         <|> return r                                                 -- !!> "NO DEL"
