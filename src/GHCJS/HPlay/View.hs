@@ -63,7 +63,7 @@ fromJSString, toJSString, getValue
 
 
 import Transient.Base hiding (input,option)
-import Transient.Internals(runTransient,runClosure, runContinuation, getPrevId,onNothing,getCont,runCont,EventF(..),StateIO,RemoteStatus(..))
+import Transient.Internals(runTransient,runClosure, runContinuation, getPrevId,onNothing,getCont,runCont,EventF(..),StateIO,RemoteStatus(..),IDNUM(..))
 import Transient.Move.Utils
 import Transient.Logged
 import Control.Applicative
@@ -251,7 +251,7 @@ fromValidated (NotValidated s err)= error $ "fromValidated: NotValidated "++ s
 getParam1 :: ( Typeable a, Read a, Show a)
           => JSString ->  StateIO (ParamResult Perch a)
 getParam1 par = do
-   me <- elemById par                     --    !> ("looking for " ++ show par)
+   me <- elemById par                       --  !> ("looking for " ++ show par)
    case me of
      Nothing -> return  NoParam
      Just e ->  do
@@ -1054,17 +1054,17 @@ data Repeat= Repeat | RepH JSString deriving (Eq, Read, Show)
 -- The part of the monadic expression that is before the event is not evaluated and his rendering is untouched.
 -- (but, at any moment, you can choose the element to be updated in the page using `at`)
 
-newtype IDNUM= IDNUM Int
+
 
 raiseEvent ::  IsEvent event  => Widget a -> event -> Widget a
 #ifdef ghcjs_HOST_OS
 raiseEvent w event = Transient $ do
-       cont <- get --   >>= \c -> return c{mfSequence= mfSequence c -1}
+       cont <- get
        let iohandler :: EventData -> IO ()
            iohandler eventdata =do
                 runStateT (setData eventdata >> runCont' cont) cont        -- !!> "runCont INIT"
                 return ()                                             -- !!> "runCont finished"
-       runView $  addEvent event iohandler <<< w
+       runView $ addEvent event iohandler <<< w
 --   return r
    where
    runCont' cont= do
