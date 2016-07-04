@@ -59,9 +59,6 @@ fromJSString, toJSString, getValue
 )  where
 
 
-
-
-
 import Transient.Base hiding (input,option)
 import Transient.Internals(runTransient,runClosure, runContinuation, getPrevId,onNothing,getCont,runCont,EventF(..),StateIO,RemoteStatus(..),IDNUM(..))
 import Transient.Move.Utils
@@ -251,12 +248,12 @@ fromValidated (NotValidated s err)= error $ "fromValidated: NotValidated "++ s
 getParam1 :: ( Typeable a, Read a, Show a)
           => JSString ->  StateIO (ParamResult Perch a)
 getParam1 par = do
-   me <- elemById par                       --  !> ("looking for " ++ show par)
+   me <- elemById par                        -- !> ("looking for " ++ show par)
    case me of
      Nothing -> return  NoParam
      Just e ->  do
        v <- getValue e                       -- !!> ("exist" ++ show par)
-       readParam v                        -- !!> ("getParam for "++ show v)
+       readParam v                           -- !!> ("getParam for "++ show v)
 
 
 type Params= Attribs
@@ -458,7 +455,7 @@ setCheckBox checked' v= Transient $ do
   return $ Just $ CheckBoxes  strs             -- !!> show ("checkbox return", strs)
 
 
-getCheckBoxes ::  Show a=> TransIO  (CheckBoxes a) ->  TransIO  [a]
+getCheckBoxes ::  Show a => TransIO  (CheckBoxes a) ->  TransIO  [a]
 --getCheckBoxes w= Transient $ do
 --   mcb <- runView w
 --   liftIO $ print "PASSED"
@@ -466,8 +463,8 @@ getCheckBoxes ::  Show a=> TransIO  (CheckBoxes a) ->  TransIO  [a]
 --     Just(CheckBoxes rs) -> Just rs
 --     _                   -> Nothing
 
-getCheckBoxes w=  do
-   CheckBoxes rs <-  w
+getCheckBoxes w = do
+   CheckBoxes rs <- w
    return rs
 
 whidden :: (Read a, Show a, Typeable a) => a -> TransIO a
@@ -511,7 +508,7 @@ getParamS look type1 mvalue= do
           Nothing -> mempty
           Just v  ->
               if (typeOf v== typeOf (undefined :: String)) then  pack (unsafeCoerce v)
-              else if typeOf v== typeOf (undefined :: JSString) then unsafeCoerce v            -- !!> "jsstring"
+              else if typeOf v== typeOf (undefined :: JSString) then unsafeCoerce v
               else toJSString $ show v             -- !!> "show"
 
     setData HasElems
@@ -1070,6 +1067,7 @@ raiseEvent w event = Transient $ do
    runCont' cont= do
 
      mn <- getData
+
      when (isJust mn) $ let IDNUM n = fromJust mn in modify $  \s -> s{mfSequence=  n}
 
      setData Repeat               -- !!> "INITCLOSURE"

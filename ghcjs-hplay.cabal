@@ -1,15 +1,15 @@
 name: ghcjs-hplay
-version: 0.3
+version: 0.3.2
 cabal-version: >=1.10
 build-type: Simple
 license: BSD3
 license-file: LICENSE
 maintainer: agocorona@gmail.com
 stability: experimental
-homepage: https://github.com/agocorona/hplayground
+homepage: https://github.com/agocorona/ghcjs-hplay
 bug-reports: https://github.com/agocorona/hplayground/issues
-synopsis: monadic, reactive Formlets running in the Web browser
-description: client-side haskell framework that compiles to javascript with the ghcjs compiler. See homepage
+synopsis: client-side Web EDSL for transient nodes running in the Web browser
+description: client-side haskell framework that compiles to javascript with the ghcjs compiler and run over transient. See homepage
 category: Web
 author: Alberto Gomez Corona
 data-dir: ""
