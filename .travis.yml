@@ -29,6 +29,8 @@ matrix:
   - env: ARGS=""
     compiler: ": # Default osx"
     os: osx
+  allow_failures:
+    - env: ARGS="--resolver nightly"
 
 before_install:
 # Undo the side-effect of using compiler above
