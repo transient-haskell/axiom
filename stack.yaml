@@ -1,4 +1,4 @@
-resolver: lts-5.6
+resolver: lts-6.0
 
 packages:
 - .
@@ -8,5 +8,9 @@ packages:
   extra-dep: true
 - location:
     git: https://github.com/agocorona/transient.git
-    commit: 22b6f80c053100ddb392ab7963697f9169d7d6c7
+    commit: e0e6be907a4045692155166ac450ca1def2f1a47
+  extra-dep: true
+- location:
+    git: https://github.com/geraldus/transient-universe.git
+    commit: 95abd962b75cb3a4a65e56243f72d0603b8081f9
   extra-dep: true
