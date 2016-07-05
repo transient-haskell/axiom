@@ -1,110 +1,148 @@
-{-# LANGUAGE FlexibleContexts, FlexibleInstances,
-  OverloadedStrings, DeriveDataTypeable, UndecidableInstances,
-  ExistentialQuantification, GeneralizedNewtypeDeriving, CPP #-}
-
-
+{-# LANGUAGE CPP                        #-}
+{-# LANGUAGE DeriveDataTypeable         #-}
+{-# LANGUAGE ExistentialQuantification  #-}
+{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE FlexibleInstances          #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE MultiParamTypeClasses      #-}
+{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE UndecidableInstances       #-}
 module GHCJS.HPlay.View(
-Widget,
-
--- * running it
-module Transient.Move.Utils,
-
- runBody, addHeader, render,runWidget', addSData,
-
--- * re-exported
-module Control.Applicative,
-
--- * widget combinators and modifiers
-
- (<**), validate
-,(<<<),(<<),(<++),(++>),(<!)
-,wcallback
-
--- * basic widgets
-,option,wprint
-,getString,inputString, getInteger,inputInteger,
-getInt, inputInt,inputFloat, inputDouble,getPassword,inputPassword,
-setRadio,setRadioActive,getRadio
-,setCheckBox, getCheckBoxes
-,getTextBox, getMultilineText,textArea,getBool
-,getSelect,setOption,setSelectedOption, wlabel,
-resetButton,inputReset, submitButton,
-inputSubmit, wbutton, wlink, noWidget, wraw, rawHtml, isEmpty,
--- * Event
-
-BrowserEvent(..)
-
--- * out of flow updates
-,at, UpdateMethod(..)
-
-
--- * reactive and events
-,resetEventData,getEventData, setEventData, IsEvent(..), EventData(..),EvData(..)
-,raiseEvent, fire, wake, pass
-,continueIf
-
-
-
--- * Perch is reexported
-,module GHCJS.Perch
-
-
--- * low level and internals
-,getNextId,genNewId, continuePerch
-,getParam, getCont,runCont
-,FormInput(..),
-
-ElemID, elemById,withElem,getProp,setProp, alert,
-fromJSString, toJSString, getValue
+    Widget
+  -- * Running it
+  , module Transient.Move.Utils
+  , runBody
+  , addHeader
+  , render
+  , runWidget'
+  , addSData
+  -- * Widget Combinators and Modifiers
+  , (<**)
+  , (<<)
+  , (<<<)
+  , (<!)
+  , (<++)
+  , (++>)
+  , validate
+  , wcallback
+  -- * Basic Widgets
+  , option
+  , wprint
+  , getString
+  , inputString
+  , getInteger
+  , inputInteger
+  , getInt
+  , inputInt
+  , inputFloat
+  , inputDouble
+  , getPassword
+  , inputPassword
+  , setRadio
+  , setRadioActive
+  , getRadio
+  , setCheckBox
+  , getCheckBoxes
+  , getTextBox
+  , getMultilineText
+  , textArea
+  , getBool
+  , getSelect
+  , setOption
+  , setSelectedOption
+  , wlabel
+  , resetButton
+  , inputReset
+  , submitButton
+  , inputSubmit
+  , wbutton
+  , wlink
+  , noWidget
+  , wraw
+  , rawHtml
+  , isEmpty
+  -- * Events
+  , BrowserEvent(..)
+  -- * Out of Flow Updates
+  , UpdateMethod(..)
+  , at
+  -- * Reactive and Events
+  , IsEvent(..)
+  , EventData(..)
+  , EvData(..)
+  , resetEventData
+  , getEventData
+  , setEventData
+  , raiseEvent
+  , fire
+  , wake
+  , pass
+  , continueIf
+  -- * Low-level and Internals
+  , ElemID
+  , FormInput(..)
+  , getNextId
+  , genNewId
+  , continuePerch
+  , getParam
+  , getCont
+  , runCont
+  , elemById
+  , withElem
+  , getProp
+  , setProp
+  , alert
+  , fromJSString
+  , toJSString
+  , getValue
+  -- * Re-exported
+  , module Control.Applicative
+  , module GHCJS.Perch
 )  where
 
+import           Transient.Base          hiding (input, option)
+import           Transient.Internals     (EventF (..), IDNUM (..),
+                                          RemoteStatus (..), StateIO, getCont,
+                                          getPrevId, onNothing, runClosure,
+                                          runCont, runContinuation,
+                                          runTransient)
+import           Transient.Logged
+import           Transient.Move.Utils
 
-import Transient.Base hiding (input,option)
-import Transient.Internals(runTransient,runClosure, runContinuation, getPrevId,onNothing,getCont,runCont,EventF(..),StateIO,RemoteStatus(..),IDNUM(..))
-import Transient.Move.Utils
-import Transient.Logged
-import Control.Applicative
-import Data.Monoid
+import           Control.Concurrent.MVar
+import           Control.Monad.State
+import qualified Data.Map                as M
 
-import Control.Monad.State
-
-import Data.Typeable
-
-import Unsafe.Coerce
-import Data.Maybe
-import System.IO.Unsafe
-import Control.Concurrent.MVar
-import Data.IORef
-import qualified Data.Map as M
-import Prelude hiding(id,span)
-
-import Data.Dynamic
-
-import Control.Concurrent
+import           Control.Applicative
+import           Control.Concurrent
+import           Data.Dynamic
+import           Data.IORef
+import           Data.Maybe
+import           Data.Monoid
+import           Data.Typeable
+import           Prelude                 hiding (id, span)
+import           System.IO.Unsafe
+import           Unsafe.Coerce
 
 #ifdef ghcjs_HOST_OS
-import Transient.Move hiding (pack)
-import GHCJS.Perch hiding (eventName,JsEvent(..),option)
-import GHCJS.Types
-import GHCJS.Marshal
-import GHCJS.Foreign
-import GHCJS.Foreign.Callback -- as CB
+import           GHCJS.Foreign
+import           GHCJS.Foreign.Callback
+import           GHCJS.Marshal
+import           GHCJS.Perch             hiding (JsEvent (..), eventName,
+                                          option)
+import           GHCJS.Types
+import           Transient.Move          hiding (pack)
 
-import Data.JSString as JS hiding (span,empty,strip)
+import           Data.JSString           as JS hiding (empty, span, strip)
 #else
-import Transient.Move hiding (pack,JSString)
-
-import GHCJS.Perch hiding (eventName,JsEvent(..),option,JSVal)
-
+import           GHCJS.Perch             hiding (JSVal, JsEvent (..), eventName,
+                                          option)
+import           Transient.Move          hiding (JSString, pack)
 #endif
 
 #ifndef ghcjs_HOST_OS
-
 type JSString = String
-
 #endif
-
-
 
 ---- | if invoked from the browser, run A computation in the web server and return to the browser
 --atServer :: Loggable a => Cloud a -> Cloud a
@@ -112,37 +150,34 @@ type JSString = String
 --     server <- onAll getSData <|> error "server not set, use 'setData serverNode'"
 --     runAt server  proc
 
-
-
-toJSString x=
-     if typeOf x== typeOf (undefined :: String )
-        then pack $ unsafeCoerce x
-        else pack $ show x
+toJSString :: (Show a, Typeable a) => a -> JSString
+toJSString x =
+  if typeOf x == typeOf (undefined :: String )
+  then pack $ unsafeCoerce x
+  else pack $ show x
 
 fromJSString :: (Typeable a,Read a) => JSString -> a
-fromJSString s= x
+fromJSString s = x
    where
-   x | typeOf x == typeOf (undefined :: JSString) =
-       unsafeCoerce x            --  !> "unsafecoerce"
-     | typeOf x == typeOf (undefined :: String) =
-       unsafeCoerce $ pack $ unsafeCoerce x            -- !!> "packcoerce"
-     | otherwise = read $ unpack s            -- !> "readunpack"
+     x | typeOf x == typeOf (undefined :: JSString) =
+         unsafeCoerce x            --  !> "unsafecoerce"
+       | typeOf x == typeOf (undefined :: String) =
+         unsafeCoerce $ pack $ unsafeCoerce x            -- !!> "packcoerce"
+       | otherwise = read $ unpack s            -- !> "readunpack"
 
 getValue :: MonadIO m => Elem -> m (Maybe String)
 getName :: MonadIO m => Elem -> m (Maybe String)
 #ifdef ghcjs_HOST_OS
-getValue e= liftIO $ do
+getValue e = liftIO $ do
    s <- getValueDOM e
    fromJSVal s -- return $ JS.unpack s
 
-
-
-getName e= liftIO $ do
+getName e = liftIO $ do
    s <- getNameDOM e
    fromJSVal s
 #else
-getValue= undefined
-getName= undefined
+getValue = undefined
+getName = undefined
 #endif
 
 elemById :: MonadIO m  => JSString -> m (Maybe Elem)
