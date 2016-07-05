@@ -20,17 +20,16 @@ source-repository head
     location: http://github.com/agocorona/ghcjs-hplay
 
 library
+     build-depends: base               > 4.0
+                  , transformers       -any
+                  , containers         -any
+                  , transient          >= 0.4
+                  , transient-universe >= 0.3.1
+                  , mtl                -any
+                  , ghcjs-perch        -any
 
     if impl(ghcjs >=0.1)
-        build-depends: base >4.0 && <5, ghcjs-base -any, transformers -any,
-                       containers -any, transient, transient-universe, mtl -any, ghcjs-perch -any,
-                       ghcjs-base -any
-
-
-    else
-        build-depends: base >4.0 && <5, transformers -any, containers -any,
-                       transient, transient-universe, mtl -any, ghcjs-perch -any
-
+        build-depends: ghcjs-base -any
 
     exposed-modules: GHCJS.HPlay.View
                      GHCJS.HPlay.Cell
