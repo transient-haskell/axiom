@@ -8,8 +8,8 @@ maintainer: agocorona@gmail.com
 stability: experimental
 homepage: https://github.com/agocorona/ghcjs-hplay
 bug-reports: https://github.com/agocorona/hplayground/issues
-synopsis: client-side Web EDSL for transient nodes running in the Web browser
-description: client-side haskell framework that compiles to javascript with the ghcjs compiler and run over transient. See homepage
+synopsis: Client-side web EDSL for transient nodes running in the web browser
+description: Client-side Haskell framework that compiles to javascript with the GHCJS compiler and run over Transient.  See homepage
 category: Web
 author: Alberto Gomez Corona
 data-dir: ""
@@ -32,7 +32,8 @@ library
                        transient, transient-universe, mtl -any, ghcjs-perch -any
 
 
-    exposed-modules: GHCJS.HPlay.View GHCJS.HPlay.Cell
+    exposed-modules: GHCJS.HPlay.View
+                     GHCJS.HPlay.Cell
     exposed: True
     buildable: True
     default-language: Haskell2010
