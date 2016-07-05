@@ -60,8 +60,9 @@ fromJSString, toJSString, getValue
 
 
 import Transient.Base hiding (input,option)
-import Transient.Internals(runTransient,runClosure, runContinuation, getPrevId,onNothing,getCont,runCont,EventF(..),StateIO,RemoteStatus(..),IDNUM(..))
 import Transient.Move.Utils
+import Transient.Internals hiding (input, option) -- (runTransient,runClosure, runContinuation, getPrevId,onNothing,getCont,runCont,EventF(..),StateIO,RemoteStatus(..),IDNUM(..))
+
 import Transient.Logged
 import Control.Applicative
 import Data.Monoid
@@ -452,7 +453,7 @@ setCheckBox checked' v= Transient $ do
                              else show v)
 
   addSData $  ( finput n "checkbox" showv  checked' Nothing :: Perch)
-  return $ Just $ CheckBoxes  strs             -- !!> show ("checkbox return", strs)
+  return $ if Prelude.null strs then empty else Just $ CheckBoxes  strs             -- !!> show ("checkbox return", strs)
 
 
 getCheckBoxes ::  Show a => TransIO  (CheckBoxes a) ->  TransIO  [a]
