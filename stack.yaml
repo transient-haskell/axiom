@@ -1,16 +1,18 @@
-resolver: lts-6.0
-
+resolver: lts-6.6
 packages:
 - .
 - location:
     git: https://github.com/geraldus/ghcjs-perch.git
-    commit: a4bfb7d6a073bcd43f7d04d5dc3876a807f73720
+    commit: 1db6e0ae5fa2ec7640991550a0662337263afeef
   extra-dep: true
+- '.'
 - location:
     git: https://github.com/agocorona/transient.git
-    commit: e0e6be907a4045692155166ac450ca1def2f1a47
+    commit: d9ee775d84b4d9aa7c4df3fa441450b8640a0d63
   extra-dep: true
 - location:
-    git: https://github.com/geraldus/transient-universe.git
-    commit: 95abd962b75cb3a4a65e56243f72d0603b8081f9
+    git: https://github.com/agocorona/transient-universe.git
+    commit: cc1c0a8bd6d38683a15ebe669dd0c7c3a234db90
   extra-dep: true
+extra-package-dbs: []
+flags: {}
