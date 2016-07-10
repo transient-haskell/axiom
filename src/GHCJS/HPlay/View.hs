@@ -605,11 +605,8 @@ getSelect opts = res where
     typef :: TransIO a -> StateIO (ParamResult Perch a)
     typef = undefined
 
-newtype MFOption a= MFOption a deriving Typeable
+newtype MFOption a = MFOption a deriving (Typeable, Monoid)
 
-instance  Monoid (TransIO (MFOption a)) where
-  mappend =  (<|>)
-  mempty = Control.Applicative.empty
 
 -- | Set the option for getSelect. Options are concatenated with `<|>`
 setOption
