@@ -2,7 +2,7 @@
 --
 -- Module      :  Cell
 -- Copyright   :
--- License     :  BSD3
+-- License     :  MIT
 --
 -- Maintainer  :  agocorona@gmail.com
 -- Stability   :  experimental

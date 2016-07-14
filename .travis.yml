@@ -1,0 +1,57 @@
+# Use new container infrastructure to enable caching
+sudo: false
+
+# Choose a lightweight base image; we provide our own build tools.
+language: c
+
+# GHC depends on GMP. You can add other dependencies here as well.
+addons:
+  apt:
+    packages:
+    - libgmp-dev
+
+# The different configurations we want to test. You could also do things like
+# change flags or use --stack-yaml to point to a different file.
+matrix:
+  include:
+  - env: ARGS=""
+    compiler: ": # Default"
+  - env: ARGS="--resolver lts-3"
+    compiler: ": # lts-3"
+  - env: ARGS="--resolver lts-4"
+    compiler: ": # lts-4"
+  - env: ARGS="--resolver lts-5"
+    compiler: ": # lts-5"
+  - env: ARGS="--resolver lts"
+    compiler: ": # lts"
+  - env: ARGS="--resolver nightly"
+    compiler: ": # nightly"
+  - env: ARGS=""
+    compiler: ": # Default osx"
+    os: osx
+  allow_failures:
+    - env: ARGS="--resolver nightly"
+
+before_install:
+# Undo the side-effect of using compiler above
+- unset CC
+
+# Download and unpack the stack executable
+- mkdir -p ~/.local/bin
+- export PATH=$HOME/.local/bin:$PATH
+- if [ `uname` = "Darwin" ];
+  then
+    curl --insecure -L https://www.stackage.org/stack/osx-x86_64 | tar xz --strip-components=1 --include '*/stack' -C ~/.local/bin;
+  else
+    curl -L https://www.stackage.org/stack/linux-x86_64 | tar xz --wildcards --strip-components=1 -C ~/.local/bin '*/stack';
+  fi
+
+# This line does all of the work: installs GHC if necessary, build the library,
+# executables, and test suites, and runs the test suites. --no-terminal works
+# around some quirks in Travis's terminal implementation.
+script: stack build $ARGS --no-terminal --install-ghc --no-haddock
+
+# Caching so the next build will be fast too.
+cache:
+  directories:
+  - $HOME/.stack

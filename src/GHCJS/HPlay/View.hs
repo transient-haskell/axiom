@@ -1,111 +1,146 @@
-{-# LANGUAGE FlexibleContexts, FlexibleInstances,
-  OverloadedStrings, DeriveDataTypeable, UndecidableInstances,
-  ExistentialQuantification, GeneralizedNewtypeDeriving, CPP #-}
-
-
+{-# LANGUAGE CPP                        #-}
+{-# LANGUAGE DeriveDataTypeable         #-}
+{-# LANGUAGE ExistentialQuantification  #-}
+{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE FlexibleInstances          #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE MultiParamTypeClasses      #-}
+{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE UndecidableInstances       #-}
 module GHCJS.HPlay.View(
-Widget,
-
--- * running it
-module Transient.Move.Utils,
-
- runBody, addHeader, render,runWidget', addSData,
-
--- * re-exported
-module Control.Applicative,
-
--- * widget combinators and modifiers
-
- (<**), validate
-,(<<<),(<<),(<++),(++>),(<!)
-,wcallback
-
--- * basic widgets
-,option,wprint
-,getString,inputString, getInteger,inputInteger,
-getInt, inputInt,inputFloat, inputDouble,getPassword,inputPassword,
-setRadio,setRadioActive,getRadio
-,setCheckBox, getCheckBoxes
-,getTextBox, getMultilineText,textArea,getBool
-,getSelect,setOption,setSelectedOption, wlabel,
-resetButton,inputReset, submitButton,
-inputSubmit, wbutton, wlink, noWidget, wraw, rawHtml, isEmpty,
--- * Event
-
-BrowserEvent(..)
-
--- * out of flow updates
-,at, UpdateMethod(..)
-
-
--- * reactive and events
-,resetEventData,getEventData, setEventData, IsEvent(..), EventData(..),EvData(..)
-,raiseEvent, fire, wake, pass
-,continueIf
-
-
-
--- * Perch is reexported
-,module GHCJS.Perch
-
-
--- * low level and internals
-,getNextId,genNewId, continuePerch
-,getParam, getCont,runCont
-,FormInput(..),
-
-ElemID, elemById,withElem,getProp,setProp, alert,
-fromJSString, toJSString, getValue
+    Widget(..)
+  -- * Running it
+  , module Transient.Move.Utils
+  , runBody
+  , addHeader
+  , render
+  , runWidget'
+  , addSData
+  -- * Widget Combinators and Modifiers
+  , (<<)
+  , (<<<)
+  , (<!)
+  , (<++)
+  , (++>)
+  , validate
+  , wcallback
+  -- * Basic Widgets
+  , option
+  , wprint
+  , getString
+  , inputString
+  , getInteger
+  , inputInteger
+  , getInt
+  , inputInt
+  , inputFloat
+  , inputDouble
+  , getPassword
+  , inputPassword
+  , setRadio
+  , setRadioActive
+  , getRadio
+  , setCheckBox
+  , getCheckBoxes
+  , getTextBox
+  , getMultilineText
+  , textArea
+  , getBool
+  , getSelect
+  , setOption
+  , setSelectedOption
+  , wlabel
+  , resetButton
+  , inputReset
+  , submitButton
+  , inputSubmit
+  , wbutton
+  , wlink
+  , noWidget
+  , wraw
+  , rawHtml
+  , isEmpty
+  -- * Events
+  , BrowserEvent(..)
+  -- * Out of Flow Updates
+  , UpdateMethod(..)
+  , at
+  -- * Reactive and Events
+  , IsEvent(..)
+  , EventData(..)
+  , EvData(..)
+  , resetEventData
+  , getEventData
+  , setEventData
+  , raiseEvent
+  , fire
+  , wake
+  , pass
+  , continueIf
+  -- * Low-level and Internals
+  , ElemID
+  , FormInput(..)
+  , getNextId
+  , genNewId
+  , continuePerch
+  , getParam
+  , getCont
+  , runCont
+  , elemById
+  , withElem
+  , getProp
+  , setProp
+  , alert
+  , fromJSString
+  , toJSString
+  , getValue
+  -- * Re-exported
+  , module Control.Applicative
+  , module GHCJS.Perch
+  -- remove
+  ,CheckBoxes(..)
 )  where
 
 
-import Transient.Base hiding (input,option)
-import Transient.Move.Utils
-import Transient.Internals hiding (input, option) -- (runTransient,runClosure, runContinuation, getPrevId,onNothing,getCont,runCont,EventF(..),StateIO,RemoteStatus(..),IDNUM(..))
+import           Transient.Internals     hiding (input, option)
+import           Transient.Logged
+import           Transient.Move.Utils
 
-import Transient.Logged
-import Control.Applicative
-import Data.Monoid
+import           Control.Concurrent.MVar
+import           Control.Monad.State
+import qualified Data.Map                as M
 
-import Control.Monad.State
+import           Control.Applicative
+import           Control.Concurrent
+import           Data.Dynamic
+import           Data.IORef
+import           Data.Maybe
+import           Data.Monoid
+import           Data.Typeable
+import           Prelude                 hiding (id, span)
+import           System.IO.Unsafe
+import           Unsafe.Coerce
 
-import Data.Typeable
-
-import Unsafe.Coerce
-import Data.Maybe
-import System.IO.Unsafe
-import Control.Concurrent.MVar
-import Data.IORef
-import qualified Data.Map as M
-import Prelude hiding(id,span)
-
-import Data.Dynamic
-
-import Control.Concurrent
 
 #ifdef ghcjs_HOST_OS
-import Transient.Move hiding (pack)
-import GHCJS.Perch hiding (eventName,JsEvent(..),option)
-import GHCJS.Types
-import GHCJS.Marshal
-import GHCJS.Foreign
-import GHCJS.Foreign.Callback -- as CB
+import           GHCJS.Foreign
+import           GHCJS.Foreign.Callback
+import           GHCJS.Marshal
+import           GHCJS.Perch             hiding (JsEvent (..), eventName,
+                                          option)
+import           GHCJS.Types
+import           Transient.Move          hiding (pack)
 
-import Data.JSString as JS hiding (span,empty,strip)
+import           Data.JSString           as JS hiding (empty, span, strip)
 #else
-import Transient.Move hiding (pack,JSString)
-
-import GHCJS.Perch hiding (eventName,JsEvent(..),option,JSVal)
-
+import           GHCJS.Perch             hiding (JSVal, JsEvent (..), eventName,
+                                          option)
+import           Transient.Move          hiding (JSString, pack)
 #endif
 
 #ifndef ghcjs_HOST_OS
-
 type JSString = String
-
 #endif
-
-
 
 ---- | if invoked from the browser, run A computation in the web server and return to the browser
 --atServer :: Loggable a => Cloud a -> Cloud a
@@ -113,37 +148,34 @@ type JSString = String
 --     server <- onAll getSData <|> error "server not set, use 'setData serverNode'"
 --     runAt server  proc
 
-
-
-toJSString x=
-     if typeOf x== typeOf (undefined :: String )
-        then pack $ unsafeCoerce x
-        else pack $ show x
+toJSString :: (Show a, Typeable a) => a -> JSString
+toJSString x =
+  if typeOf x == typeOf (undefined :: String )
+  then pack $ unsafeCoerce x
+  else pack $ show x
 
 fromJSString :: (Typeable a,Read a) => JSString -> a
-fromJSString s= x
+fromJSString s = x
    where
-   x | typeOf x == typeOf (undefined :: JSString) =
-       unsafeCoerce x            --  !> "unsafecoerce"
-     | typeOf x == typeOf (undefined :: String) =
-       unsafeCoerce $ pack $ unsafeCoerce x            -- !!> "packcoerce"
-     | otherwise = read $ unpack s            -- !> "readunpack"
+     x | typeOf x == typeOf (undefined :: JSString) =
+         unsafeCoerce x            --  !> "unsafecoerce"
+       | typeOf x == typeOf (undefined :: String) =
+         unsafeCoerce $ pack $ unsafeCoerce x            -- !!> "packcoerce"
+       | otherwise = read $ unpack s            -- !> "readunpack"
 
 getValue :: MonadIO m => Elem -> m (Maybe String)
 getName :: MonadIO m => Elem -> m (Maybe String)
 #ifdef ghcjs_HOST_OS
-getValue e= liftIO $ do
+getValue e = liftIO $ do
    s <- getValueDOM e
    fromJSVal s -- return $ JS.unpack s
 
-
-
-getName e= liftIO $ do
+getName e = liftIO $ do
    s <- getNameDOM e
    fromJSVal s
 #else
-getValue= undefined
-getName= undefined
+getValue = undefined
+getName = undefined
 #endif
 
 elemById :: MonadIO m  => JSString -> m (Maybe Elem)
@@ -173,11 +205,35 @@ data NeedForm= HasForm | HasElems  | NoElems deriving Show
 
 
 type ElemID= JSString
-type Widget a=  TransIO a
+newtype Widget a=  Widget{ norender :: TransientIO a} deriving(Monad,Alternative,MonadIO,MonadPlus)
+
+instance   Functor Widget where
+  fmap f mx=   Widget. Transient $ fmap (fmap f) . runTrans $ norender mx
+
+instance Applicative Widget where
+  pure= return
+
+  Widget (Transient x) <*> Widget (Transient y) = Widget . Transient $ do
+      mx <- x --  !> "mx"
+      my <- y --  !> "my"
+      return $ mx <*> my
+
+instance Monoid a => Monoid (Widget a) where
+  mempty= return mempty
+  mappend x y= (<>) <$> x <*> y
+
+instance AdditionalOperators Widget where
+
+    (<**)  x y= Widget $  norender x <**  norender y
+
+    (<***) x y= Widget $  norender x <*** norender y
+
+    (**>)  x y= Widget $  norender x **>  norender y
 
 
-runView :: TransIO a -> StateIO (Maybe a)
-runView  = runTrans
+
+runView :: Widget a -> StateIO (Maybe a)
+runView  = runTrans . norender
 
 -- | It is a callback in the view monad. The rendering of the second parameter substitutes the rendering
 -- of the first paramenter when the latter validates without afecting the rendering of other widgets.
@@ -186,7 +242,7 @@ runView  = runTrans
 wcallback
   ::  Widget a -> (a ->Widget b) -> Widget b
 
-wcallback x f= Transient $ do
+wcallback x f= Widget $ Transient $ do
    nid <-  genNewId
    runView $ do
              r <-  at nid Insert x
@@ -287,12 +343,12 @@ readParam (Just x1) = r
 validate
   :: Widget a
      -> (a -> StateIO  (Maybe Perch))
-     -> TransIO a
+     -> Widget a
 validate  w val=  do
-   idn <- Transient $ Just <$> genNewId
-   wraw $ span ! id idn $ noHtml
+   idn <- Widget $ Transient $ Just <$> genNewId
+   rawHtml $ span ! id idn $ noHtml
    x <-  w
-   Transient $ do
+   Widget $ Transient $ do
           me <- val x
           case me of
              Just str -> do
@@ -348,40 +404,40 @@ getNextId=  do
 
 
 -- | Display a text box and return a non empty String
-getString  ::  Maybe String -> TransIO String
+getString  ::  Maybe String -> Widget String
 getString = getTextBox
 --     `validate`
 --     \s -> if Prelude.null s then return (Just $ fromStr "")
 --                    else return Nothing
 
-inputString  :: Maybe String -> TransIO String
+inputString  :: Maybe String -> Widget String
 inputString= getString
 
 -- | Display a text box and return an Integer (if the value entered is not an Integer, fails the validation)
-getInteger :: Maybe Integer -> TransIO  Integer
+getInteger :: Maybe Integer -> Widget  Integer
 getInteger =  getTextBox
 
-inputInteger ::  Maybe Integer -> TransIO  Integer
+inputInteger ::  Maybe Integer -> Widget  Integer
 inputInteger= getInteger
 
 -- | Display a text box and return a Int (if the value entered is not an Int, fails the validation)
-getInt :: Maybe Int -> TransIO Int
+getInt :: Maybe Int -> Widget Int
 getInt =  getTextBox
 
-inputInt :: Maybe Int -> TransIO Int
+inputInt :: Maybe Int -> Widget Int
 inputInt =  getInt
 
-inputFloat :: Maybe Float -> TransIO Float
+inputFloat :: Maybe Float -> Widget Float
 inputFloat =  getTextBox
 
-inputDouble :: Maybe Double -> TransIO Double
+inputDouble :: Maybe Double -> Widget Double
 inputDouble =  getTextBox
 
 -- | Display a password box
-getPassword :: TransIO String
+getPassword :: Widget String
 getPassword = getParam Nothing "password" Nothing
 
-inputPassword ::   TransIO String
+inputPassword ::   Widget String
 inputPassword= getPassword
 
 newtype Radio a= Radio a deriving Monoid
@@ -391,8 +447,8 @@ newtype Radio a= Radio a deriving Monoid
 -- | Implement a radio button
 -- the parameter is the name of the radio group
 setRadio :: (Typeable a, Eq a, Show a) =>
-            a ->  TransIO  (Radio a)
-setRadio v = Transient $ do
+            a ->  Widget  (Radio a)
+setRadio v = Widget $ Transient $ do
   RadioId n <- getData `onNothing` error "setRadio out of getRadio"
   id <- genNewId
   st <- get
@@ -406,8 +462,10 @@ setRadio v = Transient $ do
       ret= fmap  Radio  strs
       str = if typeOf v == typeOf(undefined :: String)
                    then unsafeCoerce v else show v
+
   addSData
       ( finput id "radio" (toJSString str) ( isJust strs ) Nothing `attrs` [("name",n)] :: Perch)
+
   return ret
 
 setRadioActive :: (Typeable a, Eq a, Show a) =>
@@ -418,8 +476,8 @@ data RadioId= RadioId JSString deriving Typeable
 
 -- | encloses a set of Radio boxes. Return the option selected
 getRadio
-  :: Monoid a => [TransIO (Radio a)] -> TransIO a
-getRadio ws = Transient $ do
+  :: Monoid a => [Widget (Radio a)] -> Widget a
+getRadio ws = Widget $ Transient $ do
    id <- genNewId
    setData $ RadioId id
    fs <- mapM runView  ws
@@ -437,40 +495,37 @@ instance Monoid (CheckBoxes a) where
 
 -- | Display a text box and return the value entered if it is readable( Otherwise, fail the validation)
 setCheckBox :: (Typeable a , Show a) =>
-                Bool -> a -> TransIO  (CheckBoxes a)
-setCheckBox checked' v= Transient $ do
+                Bool -> a -> Widget  (CheckBoxes a)
+setCheckBox checked' v= Widget . Transient $ do
   n  <- genNewId
   st <- get
-  setData HasElems
+--  setData HasElems
   me <- liftIO $ elemById n
-  checked <- case me of             -- !!>  show ("setCheckBox",n,isJust me) of
-       Nothing ->  return $ if checked' then "true" else ""
-       Just e  -> liftIO $ getProp e "checked"
 
-  let strs= if  checked=="true"  then [v] else []
-      showv= toJSString (if typeOf v == typeOf (undefined :: String)
+
+  let showv= toJSString (if typeOf v == typeOf (undefined :: String)
                              then unsafeCoerce v
                              else show v)
 
   addSData $  ( finput n "checkbox" showv  checked' Nothing :: Perch)
-  return $ if Prelude.null strs then empty else Just $ CheckBoxes  strs             -- !!> show ("checkbox return", strs)
+
+  case me of
+       Nothing -> return Nothing
+       Just e -> do
+            checked <- liftIO $ getProp e "checked"
+            return . Just . CheckBoxes $ if  checked=="true"  then [v] else []
 
 
-getCheckBoxes ::  Show a => TransIO  (CheckBoxes a) ->  TransIO  [a]
---getCheckBoxes w= Transient $ do
---   mcb <- runView w
---   liftIO $ print "PASSED"
---   return $ case mcb             -- !!> show ("checks",mcb) of
---     Just(CheckBoxes rs) -> Just rs
---     _                   -> Nothing
+getCheckBoxes ::  Show a => Widget  (CheckBoxes a) ->  Widget  [a]
+getCheckBoxes w = Widget $ Transient $ do
+   mrs <- runView w
+   case mrs of
+     Nothing -> return Nothing
+     Just(CheckBoxes rs ) ->   return $ Just rs
 
-getCheckBoxes w = do
-   CheckBoxes rs <- w
-   return rs
-
-whidden :: (Read a, Show a, Typeable a) => a -> TransIO a
+whidden :: (Read a, Show a, Typeable a) => a -> Widget a
 whidden x= res where
- res= Transient $ do
+ res= Widget . Transient $ do
       n <- genNewId
       let showx= case cast x of
                   Just x' -> x'
@@ -479,7 +534,7 @@ whidden x= res where
       addSData (finput n "hidden" (toJSString showx) False Nothing :: Perch)
       return (valToMaybe r)
       where
-      typef :: TransIO a -> StateIO (ParamResult Perch a)
+      typef :: Widget a -> StateIO (ParamResult Perch a)
       typef = undefined
 
 
@@ -489,7 +544,7 @@ getTextBox
   :: (Typeable a,
       Show a,
       Read a) =>
-     Maybe a ->  TransIO a
+     Maybe a ->  Widget a
 getTextBox ms  = getParam Nothing "text" ms
 
 
@@ -497,8 +552,8 @@ getParam
   :: (Typeable a,
       Show a,
       Read a) =>
-      Maybe JSString -> JSString -> Maybe a -> TransIO  a
-getParam look type1 mvalue= Transient $ getParamS look type1 mvalue
+      Maybe JSString -> JSString -> Maybe a -> Widget  a
+getParam look type1 mvalue= Widget . Transient $ getParamS look type1 mvalue
 
 getParamS look type1 mvalue= do
     tolook <- case look of
@@ -525,9 +580,9 @@ getParamS look type1 mvalue= do
 
 -- | Display a multiline text box and return its content
 getMultilineText :: JSString
-                 -> TransIO String
+                 -> Widget String
 getMultilineText nvalue =  res where
- res= Transient $ do
+ res= Widget. Transient $ do
     tolook <- genNewId
     r <- getParam1 tolook  `asTypeOf` typef res
     case r of
@@ -535,16 +590,16 @@ getMultilineText nvalue =  res where
        NotValidated s err -> do addSData (ftextarea tolook   (toJSString s) :: Perch); return  Nothing
        NoParam            -> do setData WasParallel;addSData (ftextarea tolook  nvalue :: Perch); return  Nothing
     where
-    typef :: TransIO String -> StateIO (ParamResult Perch String)
+    typef :: Widget String -> StateIO (ParamResult Perch String)
     typef = undefined
 
 -- | A synonim of getMultilineText
-textArea ::  JSString ->TransIO String
+textArea ::  JSString ->Widget String
 textArea= getMultilineText
 
 
 
-getBool :: Bool -> String -> String -> TransIO Bool
+getBool :: Bool -> String -> String -> Widget Bool
 getBool mv truestr falsestr= do
    r <- getSelect $   setOption truestr (fromStr $ toJSString truestr)  <! (if mv then [("selected","true")] else [])
                   <|> setOption falsestr(fromStr $ toJSString falsestr) <! if not mv then [("selected","true")] else []
@@ -555,9 +610,9 @@ getBool mv truestr falsestr= do
 -- | Display a dropdown box with the options in the first parameter is optionally selected
 -- . It returns the selected option.
 getSelect :: (Typeable a, Read a,Show a) =>
-      TransIO (MFOption a) ->  TransIO  a
+      Widget (MFOption a) ->  Widget  a
 getSelect opts = res where
-  res= Transient $ do
+  res= Widget . Transient $ do
     tolook <- genNewId
     st <- get
 --    setData HasElems
@@ -568,32 +623,32 @@ getSelect opts = res where
     return $ valToMaybe r
 
     where
-    typef :: TransIO a -> StateIO (ParamResult Perch a)
+    typef :: Widget a -> StateIO (ParamResult Perch a)
     typef = undefined
 
-newtype MFOption a= MFOption a deriving Typeable
+newtype MFOption a= MFOption a deriving (Typeable, Monoid)
 
-instance  Monoid (TransIO (MFOption a)) where
-  mappend =  (<|>)
-  mempty = Control.Applicative.empty
+--instance  Monoid (Widget (MFOption a)) where
+--  mappend =  (<|>)
+--  mempty = Control.Applicative.empty
 
 -- | Set the option for getSelect. Options are concatenated with `<|>`
 setOption
   :: (Show a, Eq a, Typeable a) =>
-     a -> Perch -> TransIO (MFOption a)
+     a -> Perch -> Widget (MFOption a)
 setOption n v = setOption1 n v False
 
 
 -- | Set the selected option for getSelect. Options are concatenated with `<|>`
 setSelectedOption
   :: (Show a, Eq a, Typeable a) =>
-     a -> Perch -> TransIO (MFOption a)
+     a -> Perch -> Widget (MFOption a)
 setSelectedOption n v= setOption1 n v True
 
 
 setOption1 :: (Typeable a, Eq a, Show a) =>
-      a -> Perch -> Bool ->  TransIO  (MFOption a)
-setOption1 nam  val check= Transient $ do
+      a -> Perch -> Bool ->  Widget  (MFOption a)
+setOption1 nam  val check= Widget . Transient $ do
     let n = if typeOf nam == typeOf(undefined :: String)
                    then unsafeCoerce nam
                    else show nam
@@ -603,36 +658,36 @@ setOption1 nam  val check= Transient $ do
     return  Nothing -- (Just $ MFOption nam)
 
 
-wlabel:: Perch -> TransIO a -> TransIO a
-wlabel str w =Transient $ do
+wlabel:: Perch -> Widget a -> Widget a
+wlabel str w = Widget . Transient $ do
    id <- getNextId
    runView $ (ftag "label" str `attrs` [("for",id)] :: Perch) ++> w
 
 
 
 -- passive reset button.
-resetButton :: JSString -> TransIO ()
-resetButton label= Transient $ do
+resetButton :: JSString -> Widget ()
+resetButton label= Widget . Transient $ do
    addSData  (finput  "reset" "reset" label False Nothing :: Perch)
    return $ Just ()
 
-inputReset :: JSString -> TransIO ()
+inputReset :: JSString -> Widget ()
 inputReset= resetButton
 
 -- passive submit button. Submit a form, but it is not trigger any event.
 -- Unless you attach it with `raiseEvent`
-submitButton ::  (Read a, Show a, Typeable a) => a -> TransIO a
+submitButton ::  (Read a, Show a, Typeable a) => a -> Widget a
 submitButton label=  getParam Nothing "submit" $ Just label
 
 
-inputSubmit ::  (Read a, Show a, Typeable a) => a -> TransIO a
+inputSubmit ::  (Read a, Show a, Typeable a) => a -> Widget a
 inputSubmit= submitButton
 
 -- | active button. When clicked, return the first parameter
 wbutton :: a -> JSString -> Widget a
-wbutton x label=Transient $ do
+wbutton x label= Widget $ Transient $ do
      idn <- genNewId
-     runTrans $ do
+     runView $ do
         input  ! atr "type" "submit" ! id   idn ! atr "value" label `pass` OnClick
         return x
       `continuePerch`  idn
@@ -640,7 +695,7 @@ wbutton x label=Transient $ do
 
 -- | when creating a complex widget with many tags, this call indentifies which tag will receive the attributes of the (!) operator.
 continuePerch :: Widget a -> ElemID -> Widget a
-continuePerch w eid=  c <<< w
+continuePerch w eid=   c <<< w
       where
       c f =Perch $ \e' ->  do
          build f e'
@@ -656,7 +711,7 @@ continuePerch w eid=  c <<< w
 -- | Present a link. Return the first parameter when clicked
 wlink :: (Show a, Typeable a) => a -> Perch -> Widget a
 wlink x v=  do
-    (a ! href ( toJSString $ "#/"++show1 x)   $ v)  `pass` OnClick
+    (a ! href ( toJSString $ "#/"++ show1 x)   $ v)  `pass` OnClick
 
     return x            -- !!> "PASS"
 
@@ -679,9 +734,9 @@ wprint = wraw . pre
 --
 
 (<<<) :: (Perch -> Perch)
-         -> TransIO a
-         -> TransIO a
-(<<<) v form= Transient $ do
+         -> Widget a
+         -> Widget a
+(<<<) v form= Widget . Transient $ do
   rest <- getData `onNothing` return noHtml
   delData rest
   mx <- runView form
@@ -704,10 +759,10 @@ infixr 7 <<
 -- @ getString "hi" <++ H1 << "hi there"@
 --
 -- It has a infix prority: @infixr 6@ higuer that '<<<' and most other operators
-(<++) :: TransIO a
+(<++) :: Widget a
       -> Perch
-      -> TransIO a
-(<++) form v= Transient $ do
+      -> Widget a
+(<++) form v= Widget . Transient $ do
               mx <-  runView  form
               addSData v
               return mx
@@ -719,9 +774,9 @@ infixr 6 <++
 -- @bold << "enter name" ++> getString Nothing @
 --
 -- It has a infix prority: @infixr 6@ higher that '<<<' and most other operators
-(++>) :: Perch -> TransIO a -> TransIO a
+(++>) :: Perch -> Widget a -> Widget a
 html ++> w =
-  Transient $ do
+  Widget . Transient $ do
       addSData html
       runView w
 
@@ -729,10 +784,10 @@ html ++> w =
 
 
 -- | Add attributes to the topmost tag of a widget
---
--- it has a fixity @infix 8@
+
+--  it has a fixity @infix 8@
 infixl 8 <!
-widget <! attribs= Transient $ do
+widget <! attribs=  Widget . Transient $ do
       rest <- getData `onNothing` return mempty
       delData rest
       mx <- runView widget
@@ -742,7 +797,7 @@ widget <! attribs= Transient $ do
 
 
 instance  Attributable (Widget a) where
- (!) widget atrib = Transient $ do   -- widget <! [atrib]
+ (!) widget atrib = Widget $ Transient $ do   -- widget <! [atrib]
               rest <- getData `onNothing` return (mempty:: Perch)
               delData rest
               mx <- runView widget
@@ -765,19 +820,19 @@ mspan cont=  Perch $ \e -> do
 -- | Empty widget that does not validate. May be used as \"empty boxes\" inside larger widgets.
 --
 -- It returns a non valid value.
-noWidget  :: TransIO a
+noWidget  :: Widget a
 noWidget= Control.Applicative.empty
 
 -- | Render raw view formatting. It is useful for displaying information.
 wraw ::  Perch -> Widget ()
-wraw x= addSData x >> return () -- x ++> return ()
+wraw x= Widget $ addSData x >> return () -- x ++> return ()
 
 -- |  wraw synonym
 rawHtml= wraw
 
 -- | True if the widget has no valid input
 isEmpty :: Widget a -> Widget Bool
-isEmpty w= Transient $ do
+isEmpty w= Widget $ Transient $ do
   mv <- runView w
   return $ Just $ isNothing mv
 
@@ -824,17 +879,17 @@ data EvData =  NoData | Click Int (Int, Int) | Mouse (Int, Int) | MouseOut | Key
 
 
 
-resetEventData :: TransIO ()
-resetEventData= Transient $ do
+resetEventData :: Widget ()
+resetEventData= Widget . Transient $ do
     setData $ EventData "Onload" $ toDyn NoData
     return $ Just ()            -- !!> "RESETEVENTDATA"
 
 
-getEventData ::  TransIO EventData
-getEventData =  getSData <|> return  (EventData "Onload" $ toDyn NoData) -- (error "getEventData: event type not expected")
+getEventData ::  Widget EventData
+getEventData =  Widget getSData <|> return  (EventData "Onload" $ toDyn NoData) -- (error "getEventData: event type not expected")
 
-setEventData ::   EventData -> TransIO ()
-setEventData =  setData
+setEventData ::   EventData -> Widget ()
+setEventData =  Widget . setData
 
 
 class IsEvent a where
@@ -1026,7 +1081,7 @@ instance  IsEvent  BrowserEvent  where
 
 
 addSData :: (MonadState EventF m,Typeable a ,Monoid a) => a -> m ()
-addSData y= do
+addSData y=  do
   x <- getData `onNothing` return  mempty
   setData (x <> y)
 
@@ -1052,15 +1107,17 @@ data Repeat= Repeat | RepH JSString deriving (Eq, Read, Show)
 -- The part of the monadic expression that is before the event is not evaluated and his rendering is untouched.
 -- (but, at any moment, you can choose the element to be updated in the page using `at`)
 
+-- to store the identifier number of the form elements to be set for that event
 
+newtype IDNUM = IDNUM Int deriving Show
 
 raiseEvent ::  IsEvent event  => Widget a -> event -> Widget a
 #ifdef ghcjs_HOST_OS
-raiseEvent w event = Transient $ do
+raiseEvent w event = Widget . Transient $ do
        cont <- get
        let iohandler :: EventData -> IO ()
            iohandler eventdata =do
-                runStateT (setData eventdata >> runCont' cont) cont        -- !!> "runCont INIT"
+                runStateT (setData eventdata >> runCont' cont) cont   -- !!> "runCont INIT"
                 return ()                                             -- !!> "runCont finished"
        runView $ addEvent event iohandler <<< w
 --   return r
@@ -1071,12 +1128,12 @@ raiseEvent w event = Transient $ do
 
      when (isJust mn) $ let IDNUM n = fromJust mn in modify $  \s -> s{mfSequence=  n}
 
-     setData Repeat               -- !!> "INITCLOSURE"
+     setData Repeat                -- !> "INITCLOSURE"
      mr <- runClosure cont
-
+     return ()
      case mr of
          Nothing -> return Nothing
-         Just r -> runContinuation cont r
+         Just r -> runContinuation cont r -- !> "continue"
 
        -- create an element and add any event handler to it.
    addEvent :: IsEvent a =>  a -> (EventData -> IO()) -> Perch -> Perch
@@ -1084,10 +1141,7 @@ raiseEvent w event = Transient $ do
             e' <- build (mspan be) e
             buildHandler e' event iohandler
             return e
---            jsval <- getChildren e
---            es <- fromJSValUncheckedListOf jsval
---
---            return $ Prelude.head es
+
 
 #else
 raiseEvent w _ = w
@@ -1131,7 +1185,7 @@ continueIf b x  = guard b >> return x
 
 
 runWidgetId' ::  Widget b -> ElemID  -> TransIO b
-runWidgetId' ac id1= Transient  runWidget1
+runWidgetId' ac id1=  Transient  runWidget1
  where
  runWidget1 = do
 
@@ -1139,7 +1193,7 @@ runWidgetId' ac id1= Transient  runWidget1
    case me of
      Just e ->  do
 
-          r <- runTrans $ runWidget' ac e       -- !!> show ("found",id1)
+          r <- runView $ runWidget' ac e       -- !!> show ("found",id1)
           return r             -- !!> show ( "END RUNWIDGETID", id1)
 
 
@@ -1157,12 +1211,12 @@ runWidgetId' ac id1= Transient  runWidget1
 -- the new rendering is added to the element
 runWidget :: Widget b -> Elem  -> IO (Maybe b)
 runWidget action e = do
-     (mx, s) <- runTransient $ runWidget' action e
+     (mx, s) <- runTransient . norender $ runWidget' action e
      return mx
 
 
-runWidget' :: Widget b -> Elem   -> TransIO b
-runWidget' action e  = Transient $ do
+runWidget' :: Widget b -> Elem   -> Widget b
+runWidget' action e  = Widget $ Transient $ do
 --      liftIO $ clearChildren e    -- !> "clear 0"
       mx <- runView action                          -- !> "runVidget'"
       render <- getData `onNothing` (return  noHtml)
@@ -1214,9 +1268,9 @@ runBody w= do
 -- so that the sucessive sequence of `render` in the code will reconstruct them again.
 -- However the rendering of elements combined with `<|>` or `<>` or `<*>`  are independent.
 -- This allows for full dynamic and composable client-side Web apps.
-render :: TransIO a -> TransIO a
+render :: Widget a -> TransIO a
 #ifdef ghcjs_HOST_OS
-render  mx = do
+render  mx =  do
 
        id1 <- Transient $ do
                  me <- getData              -- !> "RENDER"
@@ -1234,8 +1288,8 @@ render  mx = do
 
 
   where
-  mx' id2= do
-     r <- mx                           -- !> "mx"
+  mx' id2= Widget $ do
+     r <- norender mx                           -- !> "mx"
      addPrefix
      (setData $ IdLine id2)            -- !!> show ("set",id2)
 
@@ -1260,7 +1314,7 @@ render  mx = do
 
 
 #else
-render x= x
+render (Widget x)= x
 #endif
 
 
@@ -1272,7 +1326,7 @@ render x= x
 
 
 -- | use this instead of `Transient.Base.option` when runing in the browser
-option :: (Typeable b, Show b) =>  b -> String -> TransientIO b
+option :: (Typeable b, Show b) =>  b -> String -> Widget b
 option x v=  wlink x (toElem v)<++ " "
 
 
