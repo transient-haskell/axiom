@@ -13,9 +13,9 @@
 -----------------------------------------------------------------------------
 {-# LANGUAGE TypeSynonymInstances, FlexibleInstances, OverloadedStrings, CPP, ScopedTypeVariables #-}
 module GHCJS.HPlay.Cell(Cell(..),boxCell,(.=),get,mkscell,scell, gcell, calc)  where
-import Transient.Base
+import Transient.Base hiding((<**))
 import Transient.Move
-import Transient.Internals (runTransState)
+import qualified Transient.Internals as Internals
 
 import GHCJS.HPlay.View
 import Data.Typeable
@@ -132,8 +132,8 @@ infixr 0 .=  -- , ..=
 -- | within a `mkscell` formula, `gcell` get the the value of another cell using his name.
 --
 -- see http://tryplayg.herokuapp.com/try/spreadsheet.hs/edit
-gcell ::   JSString -> TransIO Double
-gcell n= do
+gcell ::   JSString -> Widget Double
+gcell n= Widget $ do
   vars <- liftIO $ readIORef rvars
   case M.lookup n vars  of
     Just exp -> inc n  exp
@@ -174,18 +174,21 @@ rmodified= unsafePerformIO $ newIORef M.empty    -- cells modified by the user o
 -- the user, has an expression associated and display the result value after executing `calc`
 --
 -- see http://tryplayg.herokuapp.com/try/spreadsheet.hs/edit
-mkscell :: JSString -> Maybe Double -> Expr Double -> TransIO Double
+mkscell :: JSString -> Maybe Double -> Expr Double -> Widget Double
 mkscell name val expr= mk (scell name expr) val
 
-both mx= local $ runCloud mx <** runCloud ( atRemote  $ mx)
+both mx= local $ runCloud mx Internals.<** runCloud ( atRemote mx)
+
+
+
 
 scell :: JSString -> Expr Double -> Cell Double
-scell id  expr= Cell{ mk= \mv->  runCloud $ do
+scell id  expr= Cell{ mk= \mv->  Widget $ runCloud $ do
                            both $ lliftIO $ do
                              exprs <- readIORef rexprs
                              writeIORef rexprs $ M.insert id expr exprs
 
-                           r <- local $ getParam (Just id) "text"  mv `fire` OnKeyUp
+                           r <- local $ norender $ getParam (Just id) "text"  mv `fire` OnKeyUp
 
                            both $ lliftIO $  do
                                mod <-  readIORef rmodified
@@ -206,8 +209,8 @@ scell id  expr= Cell{ mk= \mv->  runCloud $ do
 -- | executes the spreadsheet adjusting the vaules of the cells created with `mkscell` and solving loops
 --
 -- see http://tryplayg.herokuapp.com/try/spreadsheet.hs/edit
-calc :: TransIO ()
-calc=  do
+calc :: Widget ()
+calc= Widget $  do
   st <- getCont
   liftIO  $ handle (removeVar st) $ run' st $  do
           nvs <- liftIO $ readIORef rmodified
@@ -218,7 +221,7 @@ calc=  do
           liftIO $ writeIORef rmodified M.empty
 --   return ()
   where
-  run' st x=  runTransState st x >> return ()
+  run' st x=  Internals.runTransState st x >> return ()
 
 
   checktries x= unsafePerformIO $ do
@@ -259,7 +262,7 @@ calc=  do
             Just v  -> do
                 writeIORef rmodified  $ M.insert name ( return v) nvs
                 return ()
-                runTransState st calc
+                Internals.runTransState st (norender calc)
                 return ()
 
   -- http://blog.sigfpe.com/2006/11/from-l-theorem-to-spreadsheet.html
@@ -276,21 +279,20 @@ calc=  do
 
 --loeb x=  map (\f ->  f (loeb  x)) x
 
---solve  :: M.Map JSString (TransIO a) -> TransIO (M.Map JSString a)
+--solve  :: M.Map JSString (Widget a) -> Widget (M.Map JSString a)
 solve :: TransIO [(JSString,Double)]
 solve = do
- vars <- liftIO $ readIORef rvars
- mapM (solve1 vars) $ M.toList vars
- where
- solve1 vars (k,f)= do
-    x <- f
-
-    liftIO $ writeIORef rvars $ M.insert k (return x) vars
-    return (k,x)
-
+     vars <- liftIO $ readIORef rvars
+     mapM (solve1 vars) $ M.toList vars
+     where
+     solve1 vars (k,f)= do
+        x <- f
+        liftIO $ writeIORef rvars $ M.insert k (return x) vars
+        return (k,x)
 
 
-instance (Num a,Eq a,Fractional a) =>Fractional (TransIO a)where
+
+instance (Num a,Eq a,Fractional a) =>Fractional (Widget a)where
      mf / mg = do
         f <- mf
         g <- mg
@@ -298,7 +300,7 @@ instance (Num a,Eq a,Fractional a) =>Fractional (TransIO a)where
      fromRational = error "fromRational not implemented"
 
 
-instance (Num a,Eq a) => Num (TransIO a) where
+instance (Num a,Eq a) => Num (Widget a) where
      fromInteger = return . fromInteger
      f + g = f >>= \x -> g >>= \y -> return $ x + y
      f * g = f >>= \x -> g >>= \y -> return $ x * y
