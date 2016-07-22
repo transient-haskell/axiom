@@ -626,11 +626,10 @@ getSelect opts = res where
     typef :: Widget a -> StateIO (ParamResult Perch a)
     typef = undefined
 
-newtype MFOption a= MFOption a deriving (Typeable, Monoid)
 
---instance  Monoid (Widget (MFOption a)) where
---  mappend =  (<|>)
---  mempty = Control.Applicative.empty
+newtype MFOption a = MFOption a deriving (Typeable, Monoid)
+
+
 
 -- | Set the option for getSelect. Options are concatenated with `<|>`
 setOption

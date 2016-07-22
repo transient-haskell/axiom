@@ -1,6 +1,6 @@
 resolver: lts-6.6
 packages:
-- .
+- '.'
 - location:
     git: https://github.com/geraldus/ghcjs-perch.git
     commit: 1db6e0ae5fa2ec7640991550a0662337263afeef
@@ -16,3 +16,11 @@ packages:
   extra-dep: true
 extra-package-dbs: []
 flags: {}
+
+compiler: ghcjs-0.2.0.20160703_ghc-7.10.3
+compiler-check: match-exact
+setup-info:
+  ghcjs:
+    source:
+      ghcjs-0.2.0.20160703_ghc-7.10.3:
+         url: http://ghcjs.luite.com/master-20160703.tar.gz
