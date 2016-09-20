@@ -12,7 +12,7 @@ packages:
   extra-dep: true
 - location:
     git: https://github.com/agocorona/transient-universe.git
-    commit: 03b4594a39302160493e44311333aa9cfc876b5d
+    commit: 2eb52db8b0564263f7cc70be16b2e7bc051dc0e9
   extra-dep: true
 extra-package-dbs: []
 flags: {}
