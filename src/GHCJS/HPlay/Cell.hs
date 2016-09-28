@@ -135,7 +135,7 @@ infixr 0 .=  -- , ..=
 gcell ::   JSString -> Widget Double
 gcell n= Widget $ do
   Vars vars <- getSData <|> return(Vars M.empty ) -- liftIO $ readIORef rvars
-  case M.lookup n vars !> M.size vars of
+  case M.lookup n vars of
     Just exp -> do inc n  exp;  exp
     Nothing -> error $ "cell not found: " ++ show n
   where
@@ -208,7 +208,7 @@ scell id  expr= Cell{ mk= \mv -> Widget $  do
 calc :: Widget ()
 calc= Widget $  do
   st <- getCont
-  return() `onBack` (\(e::Loop) -> do removeVar st e; forward Loop !> "ONBACK")
+  return() `onBack` (\(e::Loop) -> do removeVar st e; forward Loop )
 
   Modified nvs <- getSData  <|> error "no modified" -- liftIO $ readIORef rmodified
 
@@ -258,7 +258,7 @@ removeVar st  = \(e:: Loop) ->  do -- runCloud $ both $ localIO $ do
             Nothing -> return ()
             Just v  -> do
                 setData . Modified  $ M.insert name ( return v) nvs
-                return ()  !> ("using",v)
+                return ()   -- !> ("using",v)
                 norender calc -- runTransState st (norender calc)
                 return ()
 
