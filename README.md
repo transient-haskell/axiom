@@ -1,3 +1,6 @@
+[![Stackage LTS](http://stackage.org/package/ghcjs-hplay/badge/lts)](http://stackage.org/lts/package/ghcjs-hplay)
+[![Stackage Nightly](http://stackage.org/package/ghcjs-hplay/badge/nightly)](http://stackage.org/nightly/package/ghcjs-hplay)
+
 ghcjs-hplay
 ==========
 
