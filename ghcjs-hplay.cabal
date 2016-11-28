@@ -1,17 +1,20 @@
 name: ghcjs-hplay
-version: 0.3.4.2
-cabal-version: >=1.10
-build-type: Simple
+version: 0.3.4.1
+
 license: MIT
 license-file: LICENSE
+author: Alberto Gómez Corona
 maintainer: agocorona@gmail.com
-stability: experimental
-homepage: https://github.com/agocorona/ghcjs-hplay
-bug-reports: https://github.com/agocorona/hplayground/issues
+
+homepage: https://github.com/transient-haskell/ghcjs-hplay
+bug-reports: https://github.com/transient-haskell/ghcjs-hplay/issues
 synopsis: Client-side web EDSL for transient nodes running in the web browser
 description: Client-side Haskell framework that compiles to javascript with the GHCJS compiler and run over Transient.  See homepage
 category: Web
-author: Alberto Gomez Corona
+cabal-version: >=1.10
+build-type: Simple
+stability: experimental
+
 data-dir: ""
 extra-source-files: src/Main.hs src/Main.html
 
