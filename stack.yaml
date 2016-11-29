@@ -1,4 +1,4 @@
-resolver: lts-6.6
+resolver: lts-7.7
 packages:
 - .
 - location:
@@ -7,12 +7,12 @@ packages:
   extra-dep: true
 - '.'
 - location:
-    git: https://github.com/agocorona/transient.git
-    commit: b06645a46462e68a2712de8ecd0d8f325b07a520
+    git: https://github.com/transient-haskell/transient.git
+    commit: 129634b3b32763ab8f50b18516cfabe9706186fc
   extra-dep: true
 - location:
-    git: https://github.com/agocorona/transient-universe.git
-    commit: 2eb52db8b0564263f7cc70be16b2e7bc051dc0e9
+    git: https://github.com/transient-haskell/transient-universe.git
+    commit: e4bed24e29f526a391c8456ec90fa501784d3303
   extra-dep: true
 extra-package-dbs: []
 flags: {}
