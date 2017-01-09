@@ -6,6 +6,9 @@
 ghcjs-hplay
 ==========
 
+![](https://raw.githubusercontent.com/agocorona/ghcjs-hplay/master/axiom.png)
+
+
 This package [hplayground](https://github.com/agocorona/hplayground) is compilable with [GHCJS](https://github.com/ghcjs), the Haskell-to-JavaScript compiler. It is also the Web user interface of [Transient](https://github.com/agocorona/transient). 
 
 Unlike hplayground, ghcjs-hplay has full integration with Transient and can run widgets that run code on the server, the client or both.
