@@ -1,5 +1,5 @@
 name: ghcjs-hplay
-version: 0.3.4.2
+version: 0.4.0
 cabal-version: >=1.10
 build-type: Simple
 license: MIT
@@ -30,6 +30,8 @@ library
 
     if impl(ghcjs >=0.1)
         build-depends: ghcjs-base -any
+    else
+        build-depends: bytestring, directory
 
     exposed-modules: GHCJS.HPlay.View
                      GHCJS.HPlay.Cell
