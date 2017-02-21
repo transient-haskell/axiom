@@ -12,7 +12,7 @@
 --
 -----------------------------------------------------------------------------
 {-# LANGUAGE TypeSynonymInstances, FlexibleInstances, OverloadedStrings, CPP, ScopedTypeVariables #-}
-module GHCJS.HPlay.Cell(Cell(..),boxCell,(.=),get,mkscell,scell, gcell, calc)  where
+module GHCJS.HPlay.Cell(Cell(..),boxCell,bcell,(.=),get,mkscell,scell, gcell, calc)  where
 import Transient.Base
 import Transient.Move
 import Transient.Internals (runTransState)
@@ -41,17 +41,19 @@ type JSString = String
 
 #endif
 
-data Cell  a = Cell { mk :: Maybe a -> Widget a
+data Cell a  = Cell { mk :: Maybe a -> Widget a
                     , setter ::  a -> IO ()
                     , getter ::  IO (Maybe a)}
 
 --instance Functor Cell where
 --  fmap f cell = cell{setter= \c x ->  c .= f x, getter = \cell -> get cell >>= return . f}
 
+-- | creates (but not instantiates) an input box that has a setter and a getter. To instantiate it us his method `mk`
+bcell :: (Show a, Read a, Typeable a) =>TransIO (Cell a)
+bcell= genNewId >>= return . boxCell
 
-
--- | creates a input box cell with polimorphic value, identified by a string.
--- the cell can be updated programatically
+-- | creates (but not instantiates) a input box cell with polimorphic value, identified by a string.
+-- the cell has a getter and a setter. To instantiate it us his method `mk`
 boxCell :: (Show a, Read a, Typeable a) => ElemID -> Cell a
 boxCell id = Cell{ mk= \mv -> getParam  (Just id) "text" mv
                  , setter= \x -> do
@@ -89,7 +91,7 @@ instance Attributable (Cell a) where
 
 
 
--- | Cell assignment
+-- | Cell assignment using the cell setter
 (.=) :: MonadIO m =>  Cell a -> a -> m ()
 (.=) cell x = liftIO $ (setter cell )  x
 
@@ -276,21 +278,3 @@ removeVar st  = \(e:: Loop) ->  do -- runCloud $ both $ localIO $ do
 --loeb x=  map (\f ->  f (loeb  x)) x
 
 
-
-
-
-instance (Num a,Eq a,Fractional a) =>Fractional (Widget a)where
-     mf / mg = do
-        f <- mf
-        g <- mg
-        return $ f  / g
-     fromRational = error "fromRational not implemented"
-
-
-instance (Num a,Eq a) => Num (Widget a) where
-     fromInteger = return . fromInteger
-     f + g = f >>= \x -> g >>= \y -> return $ x + y
-     f * g = f >>= \x -> g >>= \y -> return $ x * y
-     negate f = f >>= return . negate
-     abs f =  f >>= return . abs
-     signum f =  f >>= return . signum
