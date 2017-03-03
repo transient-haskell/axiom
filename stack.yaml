@@ -3,16 +3,16 @@ packages:
 - .
 - location:
     git: https://github.com/geraldus/ghcjs-perch.git
-    commit: 1db6e0ae5fa2ec7640991550a0662337263afeef
+    commit: 050dbd7c3d9ff5df92b33026127c390e9751d935
   extra-dep: true
 - '.'
 - location:
     git: https://github.com/agocorona/transient.git
-    commit: b06645a46462e68a2712de8ecd0d8f325b07a520
+    commit: 911ba45717df8e8d26f976b57111d3426a1cbb4e
   extra-dep: true
 - location:
     git: https://github.com/agocorona/transient-universe.git
-    commit: 2eb52db8b0564263f7cc70be16b2e7bc051dc0e9
+    commit: 03fe655d4cf79bfc7b80203435cbfec37bec0db8
   extra-dep: true
 extra-package-dbs: []
 flags: {}
