@@ -1352,7 +1352,7 @@ addSData y=  do
 -- must be an identifier instead of an DOM element since links may reload the whole page
 
 data IdLine= IdLine Int JSString  -- deriving(Read,Show)
-data ExecMode= ExecEvent {- | ExecTemplate -}  deriving (Eq, Read, Show)
+data ExecMode= ExecEvent   deriving (Eq, Read, Show)
 
 execTemplate= unsafePerformIO $ newIORef False
 
