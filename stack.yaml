@@ -1,4 +1,5 @@
 resolver: lts-8.3
+
 packages:
 - .
 - location:
@@ -13,6 +14,7 @@ packages:
 - location:
     git: https://github.com/agocorona/transient-universe.git
     commit: 5133ee2707df3203ccdded97bdbeeacdff1888c5
+
   extra-dep: true
 extra-package-dbs: []
 flags: {}
