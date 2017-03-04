@@ -68,7 +68,8 @@ matrix:
     addons: {apt: {packages: [cabal-install-head,ghc-head], sources: [hvr-ghc]}}
 
   allow_failures:
-  - env: BUILD=cabal GHC=head  CABAL=head
+  - env: BUILD=ghcjs ARGS="--stack-yaml=stack-ghcjs.yaml"
+  - env: BUILD=cabal GHCVER=head  CABALVER=head
   - env: BUILD=stack ARGS="--resolver nightly"
 
 before_install:

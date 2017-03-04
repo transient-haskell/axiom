@@ -1,5 +1,8 @@
 name: ghcjs-hplay
-version: 0.3.4.2
+
+version: 0.4.0
+cabal-version: >=1.10
+build-type: Simple
 
 license: MIT
 license-file: LICENSE
@@ -26,13 +29,16 @@ library
      build-depends: base               > 4.0  && <6.0
                   , transformers       -any
                   , containers         -any
-                  , transient          >= 0.4.4.1
-                  , transient-universe >= 0.3.5.1
+                  , transient          >= 0.5.1
+                  , transient-universe >= 0.4.1
+
                   , mtl                -any
                   , ghcjs-perch        >= 0.3.3
 
     if impl(ghcjs >=0.1)
         build-depends: ghcjs-base -any
+    else
+        build-depends: bytestring, directory
 
     exposed-modules: GHCJS.HPlay.View
                      GHCJS.HPlay.Cell
