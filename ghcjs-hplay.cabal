@@ -24,7 +24,7 @@ library
                   , transformers       -any
                   , containers         -any
                   , transient          >= 0.5.1
-                  , transient-universe >= 0.4.0
+                  , transient-universe >= 0.4.1
                   , mtl                -any
                   , ghcjs-perch        -any
 
