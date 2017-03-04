@@ -23,8 +23,8 @@ library
      build-depends: base               > 4.0  && <6.0
                   , transformers       -any
                   , containers         -any
-                  , transient          >= 0.4.4
-                  , transient-universe >= 0.3.5
+                  , transient          >= 0.5.1
+                  , transient-universe >= 0.4.0
                   , mtl                -any
                   , ghcjs-perch        -any
 
