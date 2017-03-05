@@ -20,3 +20,10 @@ Unlike his predecessor, [hplayground](http://github.com/agocorona/hplayground), 
 To see how it integrates with Transient and how to create client-server applications, see the web paragraphs of the [transient tutorial](https://github.com/agocorona/transient/wiki/Transient-tutorial).
 
 To see how to create client side applications and widgets (with no server code integration), look for  [hplayground](https://github.com/agocorona/hplayground) package. [Tutorial](https://www.airpair.com/haskell-tutorial/intro-to-haskell-web-apps) 
+
+Plans:
+======
+
+ghchs-hplay is in the process of becoming a Server-side as well as Client-side library for creating Web application. The last release support page templates for the creation of server-side content.
+
+In the future it will manage routes in the server side besides client side, and will generate dinamic HTML content in the server as well as in the client.
