@@ -7,7 +7,7 @@ ghcjs-hplay
 ==========
 ![](http://vignette3.wikia.nocookie.net/pixar/images/6/6d/Wall-E_Axiom_Deck_Analysis_Map.jpg/revision/latest/scale-to-width-down/185?cb=20120718160701)
 
-For some examples, see the [transient-examples](https://github.com/transient-haskell/transient-examples) repository: [distributedApps.hs](https://github.com/transient-haskell/transient-examples/blob/master/distributedApps.hs) and      `[webapp.hs](https://github.com/transient-haskell/transient-examples/blob/master/webapp.hs)
+For some examples, see the [transient-examples](https://github.com/transient-haskell/transient-examples) repository: [distributedApps.hs](https://github.com/transient-haskell/transient-examples/blob/master/distributedApps.hs) and      [webapp.hs](https://github.com/transient-haskell/transient-examples/blob/master/webapp.hs)
 
 The source code can be executed in the commmand line if you have docker installed.
 
