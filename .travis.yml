@@ -109,15 +109,9 @@ before_install:
 
  # Install `hsc2hs`.
 - |
-  echo "Installing 'hsc2hs'."
-  case "$BUILD" in
-    stack)
-      stack --no-terminal --install-ghc install hsc2hs
-      ;;
-    cabal)
       cabal install hsc2hs
       ;;
-  esac
+  
 
 install:
 - |
