@@ -12,6 +12,8 @@ cache:
   - $HOME/.cabal
   - $HOME/.stack
   - $HOME/.local/bin
+  - $HOME/.ghcjs
+
 
 # The different configurations we want to test. We have BUILD=cabal which uses
 # cabal-install, and BUILD=stack which uses Stack. More documentation on each
@@ -45,10 +47,16 @@ matrix:
   - env: BUILD=stack ARGS="--resolver lts-3"
     compiler: ": #stack 7.10.2 LTS 3"
     addons: {apt: {packages: [ghc-7.10.2], sources: [hvr-ghc]}}
+    
   # Nightly builds are allowed to fail
   - env: BUILD=stack ARGS="--resolver nightly"
     compiler: ": #stack nightly"
     addons: {apt: {packages: [libgmp-dev]}}
+
+  # GHCJS build via stack
+  - env: BUILD=ghcjs ARGS="--stack-yaml=stack-ghcjs.yaml"
+    compiler: ": #stack GHCJS"
+    addons: {apt: {packages: [ghc-8.0.1], sources: [hvr-ghc]}}
 
   # We grab the appropriate GHC and cabal-install versions from hvr's PPA. See:
   # https://github.com/hvr/multi-ghc-travis
