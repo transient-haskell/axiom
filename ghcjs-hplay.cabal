@@ -1,6 +1,6 @@
 name: ghcjs-hplay
 
-version: 0.4.1
+version: 0.4.2
 cabal-version: >=1.10
 build-type: Simple
 
@@ -19,7 +19,7 @@ build-type: Simple
 stability: experimental
 
 data-dir: ""
-extra-source-files: src/Main.hs src/Main.html
+extra-source-files: README.md
 
 source-repository head
     type: git
