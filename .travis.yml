@@ -118,7 +118,7 @@ install:
   echo "Building dependencies."
   case "$BUILD" in
     stack)
-      stack --no-terminal $ARGS test --only-dependencies
+      stack --no-terminal $ARGS test --install-ghc --only-dependencies
       ;;
     cabal)
       cabal install --only-dependencies --enable-tests --enable-benchmarks \
