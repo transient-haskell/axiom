@@ -5,15 +5,18 @@
 
 ghcjs-hplay
 ==========
+![](http://vignette3.wikia.nocookie.net/pixar/images/6/6d/Wall-E_Axiom_Deck_Analysis_Map.jpg/revision/latest/scale-to-width-down/185?cb=20120718160701)
 
-![](https://raw.githubusercontent.com/agocorona/ghcjs-hplay/master/axiom.png)
+For some examples, see the [transient-examples](https://github.com/transient-haskell/transient-examples) repository: [distributedApps.hs](https://github.com/transient-haskell/transient-examples/blob/master/distributedApps.hs) and      `[webapp.hs](https://github.com/transient-haskell/transient-examples/blob/master/webapp.hs)
+
+The source code can be executed in the commmand line if you have docker installed.
 
 [![Gitter](https://badges.gitter.im/theam/haskell-do.svg)](https://gitter.im/Transient-Transient-Universe-HPlay/Lobby?utm_source=share-link&utm_medium=link&utm_campaign=share-link)
 
-This package [hplayground](https://github.com/agocorona/hplayground) is compilable with [GHCJS](https://github.com/ghcjs), the Haskell-to-JavaScript compiler. It is also the Web user interface of [Transient](https://github.com/agocorona/transient). 
+ghcjs-hplay is also the Web user interface of [Transient](https://github.com/agocorona/transient). 
 
-Unlike hplayground, ghcjs-hplay has full integration with Transient and can run widgets that run code on the server, the client or both.
+Unlike his predecessor, [hplayground](http://github.com/agocorona/hplayground), ghcjs-hplay has full integration with Transient and can run widgets that run code on the server, the client or both.
 
 To see how it integrates with Transient and how to create client-server applications, see the web paragraphs of the [transient tutorial](https://github.com/agocorona/transient/wiki/Transient-tutorial).
 
-To see how to create client side applications and widgets (not yet with full server code integration), look for the  [hplayground](https://github.com/agocorona/hplayground) package.
+To see how to create client side applications and widgets (with no server code integration), look for  [hplayground](https://github.com/agocorona/hplayground) package. [Tutorial](https://www.airpair.com/haskell-tutorial/intro-to-haskell-web-apps) 
