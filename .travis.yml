@@ -129,7 +129,7 @@ install:
       stack --no-terminal $ARGS test --install-ghc --only-dependencies
       ;;
     cabal)
-      cabal install --only-dependencies --enable-tests --enable-benchmarks \
+      cabal install --only-dependencies  --enable-benchmarks \
       --force-reinstalls --ghc-options=-O0 --reorder-goals \
       --max-backjumps=-1 $CABALARGS
       ;;
@@ -143,7 +143,7 @@ script:
       stack --no-terminal haddock --no-haddock-deps $ARGS
       ;;
     cabal)
-      cabal configure --enable-tests --enable-benchmarks -v2 --ghc-options="-O0 -Werror"
+      cabal configure  --enable-benchmarks -v2 --ghc-options="-O0 -Werror"
       cabal build
       cabal check || [[ "$CABAL" == "1.16" ]]
       cabal test
