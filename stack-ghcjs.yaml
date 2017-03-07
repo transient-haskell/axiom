@@ -19,7 +19,7 @@ packages:
 extra-package-dbs: []
 flags: {}
 
-compiler: ghcjs-0.2.1.9007007_ghc-8.0.1
+compiler: ghcjs-0.2.1.9007019_ghc-8.0.1
 compiler-check: match-exact
 setup-info:
   ghcjs:
