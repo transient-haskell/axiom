@@ -17,6 +17,8 @@ Axiom (the new mame of ghcjs-hplay) is also the Web user interface of [Transient
 
 Unlike his predecessor, [hplayground](http://github.com/agocorona/hplayground), Axiom has full integration with Transient and can run widgets that run code on the server, the client or both.
 
+Axiom execute browser widgets that are reactive, can be composed monadically and algebraically (applicative, alternative, monoidal..). At the same time they participate in cloud computations. A widget can execute code in the server and, trough the server, in any node on the cloud using the same cloud primitives defined in transient-universe. The example applications include widgets that perform distributed map-reduce and federated chat servers as well as stream fibonacci numbers from server to client and from client to server.
+
 To see how it integrates with Transient and how to create client-server applications, see the web paragraphs of the [transient tutorial](https://github.com/agocorona/transient/wiki/Transient-tutorial).
 
 To see how to create client side applications and widgets (with no server code integration), look for  [hplayground](https://github.com/agocorona/hplayground) package. [Tutorial](https://www.airpair.com/haskell-tutorial/intro-to-haskell-web-apps) 
