@@ -13,7 +13,7 @@ The source code can be executed in the commmand line if you have docker installe
 
 [![Gitter](https://badges.gitter.im/theam/haskell-do.svg)](https://gitter.im/Transient-Transient-Universe-HPlay/Lobby?utm_source=share-link&utm_medium=link&utm_campaign=share-link)
 
-Axiom (the new mame of ghcjs-hplay) is also the Web user interface of [Transient](https://github.com/agocorona/transient). 
+Axiom (the new mame of ghcjs-hplay) is also the Web user interface of [Transient](https://github.com/agocorona/transient). The Web functionality of transient will be called **Axiom**, like the cruise starship of Wall-e. Axiom is made to let you navigate the universe of nodes in the cloud trough your browser while you are comfortably seated in your [hoverchair](https://www.youtube.com/watch?v=uOL2W9JQmo8)
 
 Unlike his predecessor, [hplayground](http://github.com/agocorona/hplayground), Axiom has full integration with Transient and can run widgets that run code on the server, the client or both.
 
