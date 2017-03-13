@@ -3,7 +3,7 @@
 [![Stackage Nightly](http://stackage.org/package/ghcjs-hplay/badge/nightly)](http://stackage.org/nightly/package/ghcjs-hplay)
 [![Build Status](https://travis-ci.org/agocorona/ghcjs-hplay.png?branch=master)](https://travis-ci.org/agocorona/ghcjs-hplay)
 
-ghcjs-hplay
+Axiom (ghcjs-hplay)
 ==========
 ![](http://vignette3.wikia.nocookie.net/pixar/images/6/6d/Wall-E_Axiom_Deck_Analysis_Map.jpg/revision/latest/scale-to-width-down/185?cb=20120718160701)
 
@@ -13,9 +13,9 @@ The source code can be executed in the commmand line if you have docker installe
 
 [![Gitter](https://badges.gitter.im/theam/haskell-do.svg)](https://gitter.im/Transient-Transient-Universe-HPlay/Lobby?utm_source=share-link&utm_medium=link&utm_campaign=share-link)
 
-ghcjs-hplay is also the Web user interface of [Transient](https://github.com/agocorona/transient). 
+Axiom (the new mame of ghcjs-hplay) is also the Web user interface of [Transient](https://github.com/agocorona/transient). 
 
-Unlike his predecessor, [hplayground](http://github.com/agocorona/hplayground), ghcjs-hplay has full integration with Transient and can run widgets that run code on the server, the client or both.
+Unlike his predecessor, [hplayground](http://github.com/agocorona/hplayground), Axiom has full integration with Transient and can run widgets that run code on the server, the client or both.
 
 To see how it integrates with Transient and how to create client-server applications, see the web paragraphs of the [transient tutorial](https://github.com/agocorona/transient/wiki/Transient-tutorial).
 
@@ -24,6 +24,6 @@ To see how to create client side applications and widgets (with no server code i
 Plans:
 ======
 
-ghchs-hplay is in the process of becoming a Server-side as well as Client-side library for creating Web application. The last release support page templates for the creation of server-side content.
+Axiom is in the process of becoming a Server-side as well as Client-side library for creating Web application. The last release support page templates for the creation of server-side content.
 
 In the future it will manage routes in the server side besides client side, and will generate dinamic HTML content in the server as well as in the client.
