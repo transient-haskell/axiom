@@ -1,7 +1,7 @@
 [![Hackage](https://img.shields.io/hackage/v/ghcjs-hplay.svg)](http://hackage.haskell.org/package/ghcjs-hplay)
 [![Stackage LTS](http://stackage.org/package/ghcjs-hplay/badge/lts)](http://stackage.org/lts/package/ghcjs-hplay)
 [![Stackage Nightly](http://stackage.org/package/ghcjs-hplay/badge/nightly)](http://stackage.org/nightly/package/ghcjs-hplay)
-[![Build Status](https://travis-ci.org/agocorona/ghcjs-hplay.png?branch=master)](https://travis-ci.org/agocorona/ghcjs-hplay)
+[![Build Status](https://travis-ci.org/transient-haskell/ghcjs-hplay.png?branch=master)](https://travis-ci.org/agocorona/ghcjs-hplay)
 
 Axiom (ghcjs-hplay)
 ==========
