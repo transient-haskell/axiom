@@ -105,7 +105,7 @@ module GHCJS.HPlay.View(
 )  where
 
 
-import           Transient.Internals     hiding (input, option, parent)
+import           Transient.Internals     hiding (input, option, parent, try)
 import           Transient.Logged
 import           Transient.Move.Utils
 import qualified Prelude(id,span,div)
@@ -278,7 +278,6 @@ instance AdditionalOperators Widget where
           Widget . Transient $ do
                  mn <- getData
                  mrepeat <-getData
-                 liftIO $ print ("IDNUM",mn)
                  when (isJust mn && mrepeat == Just ExecEvent) $ do
                     let IDNUM n = fromJust mn in modify $  \s -> s{mfSequence=  n}
 --                                                                                 !> ("SET IDMUN", n)
@@ -1352,7 +1351,9 @@ addSData y=  do
 -- must be an identifier instead of an DOM element since links may reload the whole page
 
 data IdLine= IdLine Int JSString  -- deriving(Read,Show)
-data ExecMode= ExecEvent  deriving (Eq, Read, Show)
+
+data ExecMode= ExecEvent   deriving (Eq, Read, Show)
+
 
 execTemplate= unsafePerformIO $ newIORef False
 
