@@ -23,6 +23,23 @@ To see how it integrates with Transient and how to create client-server applicat
 
 To see how to create client side applications and widgets (with no server code integration), look for  [hplayground](https://github.com/agocorona/hplayground) package. [Tutorial](https://www.airpair.com/haskell-tutorial/intro-to-haskell-web-apps) 
 
+How it works
+============
+The JS program compiled with GHCJS is sent to the browser, then it opens a websockets connection. Then  the most useful primitive is `atRemote` wich execute his argument in the server and return the result back to the client  (or viceversa, see below). The communication transport the variables necessary for executing the computation remotely. There is no explicit serialization neither communication. All is done implicitly.
+
+`atRemote` can be executed inside itself, so a computation can jump from server to client and back. So a browser can be controlled by the server or the other way aroud. But the execution starts in the browser. There is very little data to transport to execute remotely.  In the other side, streaming  and reactivity in both directions is included with no additional considerations with `atRemote` and other primitives. Isn't awesome?
+
+In the other side, there is an experimental template editor to generate static HTML templates. The server can execute a rest route and bring the corresponding page template and the JS code to the browser, so web crawlers can find something to read.
+Also in Axiom everithing compose algebraically with standard applicative, alternative and monoidal operators, and  also monadically:  
+
+Larger widgets can be composed with algebraic combinations of smaller widgets. No limits. Widgets can have server side (they can use `atRemote`) so they are full stack, autonomous pieces down to the cloud. They make perfect software components.
+
+Events do not bubble up to the top like in the case of React. An event within a widget produce a monadic response that executes widgets down trough the monad without affecting the surrounding rendering not affected by the event. That is why Axiom does not need a Virtual DOM, and the logic of the application and the execution flow match, so it produces a clean and understandable code. look at the TODO app (it is client-side only)
+
+tryplayg.herokuapp.com/try/todo.hs/edit
+
+
+
 Plans:
 ======
 
