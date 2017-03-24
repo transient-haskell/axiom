@@ -38,7 +38,7 @@ Events do not bubble up to the top like in the case of React. An event within a 
 
 tryplayg.herokuapp.com/try/todo.hs/edit
 
-
+Axiom also implement widgets that works as spreadsheet cells, with formulas depending on other cells. These formulas can be executed in the server, so they have full access to databases, mumber crunching, map-reduce etc. This functionality need some testing.
 
 Plans:
 ======
