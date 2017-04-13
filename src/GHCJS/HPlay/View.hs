@@ -25,6 +25,7 @@ module GHCJS.HPlay.View(
   , (++>)
   , validate
   , wcallback
+  , redraw
   -- * Basic Widgets
   , option
   , wprint
@@ -144,14 +145,13 @@ import           GHCJS.Foreign.Callback.Internal (Callback(..))
 import           GHCJS.Marshal
 
 import           GHCJS.Perch             hiding (JsEvent (..), eventName,
-                                          option,head)
+                                          option,head,map)
 import           GHCJS.Types
 import           Transient.Move          hiding (pack)
 
 import           Data.JSString           as JS hiding (empty, center,span, strip,foldr,head,tail)
 #else
-import           GHCJS.Perch             hiding (JSVal, JsEvent (..), eventName,
-                                          option,head)
+import           GHCJS.Perch             hiding (JSVal, JsEvent (..), eventName, option,head, map)
 import           Transient.Move          hiding (JSString, pack)
 #endif
 
@@ -308,7 +308,15 @@ wcallback x f= Widget $ Transient $ do
              at nid Insert $ f r
 
 
+-- | execute a widget but redraw itself too when some event happens.
+-- The first parameter is the path of the DOM element that hold the widget, used by `at`
 
+redraw :: JSString -> Widget a -> TransIO a
+redraw idelem w=  do
+   path <- getState <|> return ( Path [])
+   r <- render $ at idelem Insert  w
+   setState path
+   redraw  idelem w   <|> return r
 
 
 
@@ -772,7 +780,8 @@ wlink :: (Show a, Typeable a) => a -> Perch -> Widget a
 wlink x v=  do
     (a ! href "#"   $ v)  `pass` OnClick
     Path paths <- Widget $ getSData <|> return (Path  [])
-    let paths'= paths ++  [pack $ show1 x]
+
+    let paths'= paths ++  [ toLower $ JS.pack $ show1 x ]
     setData $ Path  paths'
 --                                                         !> ("paths", paths')
     let fpath= ("/" <> (Prelude.foldl  (\p p' -> p <> "/" <> p') (head paths') $ tail paths')<> ".html")
@@ -782,6 +791,7 @@ wlink x v=  do
 wlink _ _= empty
 #endif
 
+show1 :: (Typeable a,Show a) => a -> String
 show1 x | typeOf x== typeOf (undefined :: String) = unsafeCoerce x
         | otherwise= show x
 
@@ -792,7 +802,7 @@ data Path= Path [JSString]
 -- | template link. Besides the wlink behaviour, it loads the page from the server if there is any
 --
 -- the page many have been saved with `edit`
-tlink :: (Show a, Read a, Typeable a) => a -> Perch -> Widget a
+tlink :: (Show a,  Typeable a) => a -> Perch -> Widget a
 tlink x v= Widget  $
 
     let showx= show1 x
@@ -941,9 +951,6 @@ token tok= do
     if s == tok then return ()     -- !> ("FOUND", tok)
       else empty
 
-try p= do
-   ParseContext readit str <- getSData :: TransIO (ParseContext BS.ByteString)
-   p <|> (setData ( ParseContext readit str) >> empty)
 
 parseString= do
 --    dropSpaces
@@ -1640,8 +1647,8 @@ data UpdateMethod= Append | Prepend | Insert deriving Show
 
 
 
--- | Run the widget as the content of the element with the given id. The content can
--- be appended, prepended to the previous content or it can be the only content depending on the
+-- | Run the widget as the content of the element with the given path identifier. The content can
+-- be appended, prepended to the previous content or it can erase the previous content depending on the
 -- update method.
 at ::  JSString -> UpdateMethod -> Widget a -> Widget  a
 at id method w= setAt id method <<< w
@@ -1677,6 +1684,8 @@ at'  id method w= setAt id method `insert` w
           f <- getData `onNothing` return noHtml
           setData $ rest <> v f
           return mx
+
+
 
 #ifdef ghcjs_HOST_OS
 
