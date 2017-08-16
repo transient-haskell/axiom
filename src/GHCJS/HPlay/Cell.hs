@@ -13,22 +13,15 @@
 -----------------------------------------------------------------------------
 {-# LANGUAGE TypeSynonymInstances, FlexibleInstances, OverloadedStrings, CPP, ScopedTypeVariables #-}
 module GHCJS.HPlay.Cell(Cell(..),boxCell,bcell,(.=),get,mkscell,scell, gcell, calc)  where
-import Transient.Base
-import Transient.Move
-import Transient.Internals (runTransState)
-import Transient.Backtrack
+import Transient.Internals
 import GHCJS.HPlay.View
 import Data.Typeable
 import Unsafe.Coerce
 import qualified Data.Map as M hiding ((!))
-import System.IO.Unsafe
 
 import Control.Monad.IO.Class
 import Control.Monad
-import Data.Maybe
-import Control.Exception
 import Data.List
-import GHCJS.Perch
 import Control.Exception
 
 #ifdef ghcjs_HOST_OS

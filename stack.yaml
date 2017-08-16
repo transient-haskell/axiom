@@ -9,11 +9,11 @@ packages:
 - '.'
 - location:
     git: https://github.com/agocorona/transient.git
-    commit: 72444087d25ac5e88d8eeae6e3613d8aff7beda0
+    commit: b15972a71634efe3b85a1480cecc35b50d424e5d
   extra-dep: true
 - location:
     git: https://github.com/agocorona/transient-universe.git
-    commit: 80c06fff331788b62e6dda5dba161e368c79e2d6
+    commit: c1a70374d13d92f2b5947a8122ee2c4d64e2a59f
 
   extra-dep: true
 extra-package-dbs: []
