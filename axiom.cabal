@@ -1,6 +1,6 @@
 name: axiom
 
-version: 0.4.5
+version: 0.4.6
 cabal-version: >=1.10
 build-type: Simple
 
