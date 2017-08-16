@@ -1,11 +1,10 @@
+![Axiom logo](axiom.png)
+==========
 [![Hackage](https://img.shields.io/hackage/v/ghcjs-hplay.svg)](http://hackage.haskell.org/package/ghcjs-hplay)
 [![Stackage LTS](http://stackage.org/package/ghcjs-hplay/badge/lts)](http://stackage.org/lts/package/ghcjs-hplay)
 [![Stackage Nightly](http://stackage.org/package/ghcjs-hplay/badge/nightly)](http://stackage.org/nightly/package/ghcjs-hplay)
-[![Build Status](https://travis-ci.org/transient-haskell/ghcjs-hplay.png?branch=master)](https://travis-ci.org/transient-haskell/axiom)
+[![Build Status](https://travis-ci.org/transient-haskell/axiom.png?branch=master)](https://travis-ci.org/transient-haskell/axiom)
 
-Axiom (ghcjs-hplay)
-==========
-![](http://vignette3.wikia.nocookie.net/pixar/images/6/6d/Wall-E_Axiom_Deck_Analysis_Map.jpg/revision/latest/scale-to-width-down/185?cb=20120718160701)
 
 For some examples, see the [transient-examples](https://github.com/transient-haskell/transient-examples) repository: [distributedApps.hs](https://github.com/transient-haskell/transient-examples/blob/master/distributedApps.hs) and      [webapp.hs](https://github.com/transient-haskell/transient-examples/blob/master/webapp.hs)
 
@@ -13,7 +12,7 @@ The source code can be executed in the commmand line if you have docker installe
 
 [![Gitter](https://badges.gitter.im/theam/haskell-do.svg)](https://gitter.im/Transient-Transient-Universe-HPlay/Lobby?utm_source=share-link&utm_medium=link&utm_campaign=share-link)
 
-Axiom (the new name of ghcjs-hplay) is also the Web user interface of [Transient](https://github.com/agocorona/transient). The Web functionality of transient will be called **Axiom**, like the cruise starship of Wall-e. Axiom is made to let you navigate the universe of nodes in the cloud trough your browser while you are comfortably seated in your [hoverchair](https://www.youtube.com/watch?v=uOL2W9JQmo8).
+Axiom (the new name of ghcjs-hplay) is also the Web user interface of [Transient](https://github.com/agocorona/transient). The Web functionality of transient will be called **Axiom**, like the cruise starship of Wall-e. Axiom is made to let you navigate the universe of nodes in the cloud through your browser while you are comfortably seated in your [hoverchair](https://www.youtube.com/watch?v=uOL2W9JQmo8).
 
 Unlike his predecessor, [hplayground](http://github.com/agocorona/hplayground), Axiom has full integration with Transient and can run widgets that run code on the server, the client or both.
 
@@ -21,7 +20,7 @@ Axiom execute browser widgets that are reactive, can be composed monadically and
 
 To see how it integrates with Transient and how to create client-server applications, see the web paragraphs of the [transient tutorial](https://github.com/agocorona/transient/wiki/Transient-tutorial).
 
-To see how to create client side applications and widgets (with no server code integration), look for  [hplayground](https://github.com/agocorona/hplayground) package. [Tutorial](https://www.airpair.com/haskell-tutorial/intro-to-haskell-web-apps) 
+To see how to create client side applications and widgets (with no server code integration), look for  [hplayground](https://github.com/agocorona/hplayground) package. [Tutorial](https://www.airpair.com/haskell-tutorial/intro-to-haskell-web-apps)
 
 How it works
 ============

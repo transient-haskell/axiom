@@ -1509,10 +1509,14 @@ runWidget' action e  = Widget $ Transient $ do
 
 -- | add a header in the <header> tag
 addHeader :: Perch -> IO ()
+#ifdef ghcjs_HOST_OS
 addHeader format= do
     head <- getHead
     build format head
     return ()
+#else
+addHeader _ = return ()
+#endif
 
 
 -- | run the widget as the body of the HTML. It adds the rendering to the body of the document.
