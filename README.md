@@ -1,8 +1,8 @@
 ![Axiom logo](axiom.png)
 ==========
 [![Hackage](https://img.shields.io/hackage/v/ghcjs-hplay.svg)](http://hackage.haskell.org/package/ghcjs-hplay)
-[![Stackage LTS](http://stackage.org/package/ghcjs-hplay/badge/lts)](http://stackage.org/lts/package/ghcjs-hplay)
-[![Stackage Nightly](http://stackage.org/package/ghcjs-hplay/badge/nightly)](http://stackage.org/nightly/package/ghcjs-hplay)
+[![Stackage LTS](http://stackage.org/package/axiom/badge/lts)](http://stackage.org/lts/package/axiom)
+[![Stackage Nightly](http://stackage.org/package/axiom/badge/nightly)](http://stackage.org/nightly/package/axiom)
 [![Build Status](https://travis-ci.org/transient-haskell/axiom.png?branch=master)](https://travis-ci.org/transient-haskell/axiom)
 
 
