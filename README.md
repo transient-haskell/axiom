@@ -26,7 +26,7 @@ How it works
 ============
 The JS program compiled with GHCJS is sent to the browser, then it opens a websockets connection. Then  the most useful primitive is `atRemote` wich execute his argument in the server and return the result back to the client  (or viceversa, see below). The communication transport the variables necessary for executing the computation remotely. There is no explicit serialization neither communication. All is done implicitly.
 
-`atRemote` can be executed inside itself, so a computation can jump from server to client and back. So a browser can be controlled by the server or the other way aroud. But the execution starts in the browser. There is very little data to transport to execute remotely.  In the other side, streaming  and reactivity in both directions is included with no additional considerations with `atRemote` and other primitives. Isn't awesome?
+`atRemote` can be executed inside itself, so a computation can jump from server to client and back. So a browser can be controlled by the server or the other way aroud. But the execution starts in the browser. Only the variable values already computed are transported to execute remotely.  In the other side, streaming  and reactivity in both directions is included since `atRemote` and other primitives are reactive (see the [transient tutorial](https://github.com/transient-haskell/transient/wiki/Transient-tutorial)).
 
 In the other side, there is an experimental template editor to generate static HTML templates. The server can execute a rest route and bring the corresponding page template and the JS code to the browser, so web crawlers can find something to read.
 Also in Axiom everithing compose algebraically with standard applicative, alternative and monoidal operators, and  also monadically:  
@@ -35,7 +35,7 @@ Larger widgets can be composed with algebraic combinations of smaller widgets. N
 
 Events do not bubble up to the top like in the case of React. An event within a widget produce a monadic response that executes widgets down trough the monad without affecting the surrounding rendering not affected by the event. That is why Axiom does not need a Virtual DOM, and the logic of the application and the execution flow match, so it produces a clean and understandable code. look at the TODO app (it is client-side only)
 
-tryplayg.herokuapp.com/try/todo.hs/edit
+http://tryplayg.herokuapp.com/try/todo.hs/edit
 
 Axiom also implement widgets that works as spreadsheet cells, with formulas depending on other cells. These formulas can be executed in the server, so they have full access to databases, mumber crunching, map-reduce etc. This functionality need some testing.
 
@@ -44,4 +44,4 @@ Plans:
 
 Axiom is in the process of becoming a Server-side as well as Client-side library for creating Web application. The last release support page templates for the creation of server-side content.
 
-In the future it will manage routes in the server side besides client side, and will generate dinamic HTML content in the server as well as in the client.
+
