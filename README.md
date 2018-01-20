@@ -8,7 +8,7 @@
 
 For some examples, see the [transient-examples](https://github.com/transient-haskell/transient-examples) repository: [distributedApps.hs](https://github.com/transient-haskell/transient-examples/blob/master/distributedApps.hs) and      [webapp.hs](https://github.com/transient-haskell/transient-examples/blob/master/webapp.hs)
 
-The source code can be executed in the commmand line if you have docker installed.
+The source code of these applications can be executed in the commmand line if you have docker installed.
 
 [![Gitter](https://badges.gitter.im/theam/haskell-do.svg)](https://gitter.im/Transient-Transient-Universe-HPlay/Lobby?utm_source=share-link&utm_medium=link&utm_campaign=share-link)
 
