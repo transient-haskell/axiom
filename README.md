@@ -86,8 +86,8 @@ main= keep . initNode . onBrowser $ do
     
     r <-  atRemote $ do
                 r <- local . threads 1 . choose $ take 10 fibs
-                lliftIO $ print r
-                lliftIO $ threadDelay 1000000
+                localIO $ print r
+                localIO $ threadDelay 1000000
                 return r
     
     local . render . rawHtml $ (h2 r)
