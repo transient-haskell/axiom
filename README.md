@@ -144,6 +144,31 @@ How to compile and run a program
 > yourProgram -p start/yourhost/yourport
 
 ```
+
+How to run Distributed applications
+========================
+
+If your program use `inputNodes` to connect N server nodes, you must use additional parameters in the command line:
+
+in a computer/ docker instance:
+```
+> yourProgram -p start/host1/port1
+```
+In the same or another computer or docker instance:
+```
+> yourProgram -p start/host2/port2/add/host1/port1/y
+```
+in the same or another computer or docker instance:
+```
+> yourProgram -p start/host3/port3/add/host1/port1/y
+```
+
+Be sure that the host:port addresses are reachable from all the machines.
+
+This connect all the server nodes among them. The web browser can point to any of them if you hace the js files compiled by GHCJS in the `static` folder of each execution location.
+
+See [distrbutedApps](https://github.com/transient-haskell/transient-examples/blob/master/distributedApps.hs) that contain examples of distributed web applications.
+
 Plans:
 ======
 
