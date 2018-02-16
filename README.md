@@ -41,7 +41,7 @@ Axiom also implement widgets that works as spreadsheet cells, with formulas depe
 
 How to install & run fast
 =========================
-use `initNode` to initalize the application with `initNode`
+use `initNode` to initalize the application. Example below.
    
 
 If you have docker
