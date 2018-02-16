@@ -39,6 +39,111 @@ http://tryplayg.herokuapp.com/try/todo.hs/edit
 
 Axiom also implement widgets that works as spreadsheet cells, with formulas depending on other cells. These formulas can be executed in the server, so they have full access to databases, mumber crunching, map-reduce etc. This functionality need some testing.
 
+How to install & run fast
+=========================
+use `initNode` to initalize the application with `initNode`
+   
+
+If you have docker
+------------------
+, you can run a transient image that has GHC, GHCJS and Transient installed. Then create this program with this content and save it to an executable location:
+```
+$ cat execthirdline.sh
+command=`sed -n '3p' ${1} | sed 's/-- //'`
+eval $command $1 $2 $3
+```
+Then add this to the head of your main source file:
+
+```csh
+#!/usr/bin/env ./execthirdline.sh
+-- compile it with ghcjs and  execute it with runghc
+-- set -e && port=`echo ${3} | awk -F/ '{print $(3)}'` && docker run -it -p ${port}:${port} -v $(pwd):/work agocorona/transient:24-03-2017  bash -c "mkdir -p static && ghcjs /work/${1} -o static/out && runghc /work/${1} ${2} ${3}"
+```
+
+That header compiles the program with GHCJS, then install the javascript generated and then executes `runghc` to execute the server program in interpreted mode. 
+
+To generate the binary server. you can susbstitute  `runghc` by `ghc`.
+
+For example this is a program that should execute with docker
+
+```haskell
+#!/usr/bin/env ./execthirdline.sh
+-- compile it with ghcjs and  execute it with runghc
+-- set -e && port=`echo ${3} | awk -F/ '{print $(3)}'` && docker run -it -p ${port}:${port} -v $(pwd):/work agocorona/transient:24-03-2017  bash -c "mkdir -p static && ghcjs /work/${1} -o static/out && runghc /work/${1} ${2} ${3}"
+
+import Prelude hiding (div, id, span)
+import Transient.Internals
+import GHCJS.HPlay.View
+import Transient.Move
+import Transient.Indeterminism
+import Data.IORef
+import Control.Concurrent (threadDelay)
+import Control.Monad.IO.Class
+import Data.Monoid
+
+main= keep . initNode . onBrowser $ do 
+    local . render $  wlink () (h1 "hello fibonacci numbers")
+    
+    r <-  atRemote $ do
+                r <- local . threads 1 . choose $ take 10 fibs
+                lliftIO $ print r
+                lliftIO $ threadDelay 1000000
+                return r
+    
+    local . render . rawHtml $ (h2 r)
+    where
+    fibs = 0 : 1 : zipWith (+) fibs (tail fibs) :: [Int]  -- fibonacci numb. definition
+```
+
+To execute your program:
+```
+> chmod 777 YourSource.hs
+> ./YourSource.hs -p start/localhost/port
+```
+
+The program will be accessed from outside docker as a web application. Read the documentation of Docker for your platform about how to invoke it.
+
+If you want to run it in a host Linux machine, you can export the JS code and the binary to a host folder and execute it:
+
+```
+> YourProgram - p start/yourhost/port
+```
+
+If you want to install Axiom in your host machine:
+--------------------------------------------------
+
+You need to install [stack](https://docs.haskellstack.org/en/stable/README/) and [ghcjs](https://github.com/ghcjs/ghcjs)
+
+Then install Axiom in stack/ghc:
+
+```
+> stack install axiom
+```
+
+This should install ghc and compile everithing.
+
+Alternatively, you can install [Haskell platform](https://www.haskell.org/platform/) and:
+
+```
+> cabal install axiom
+```
+
+Then install Axiom in GHCJS:
+
+```
+> cabal install axiom --ghcjs
+```
+
+How to compile and run a program
+================================
+```
+> mkdir -p static 
+> ghcjs /work/yourProgram.hs -o static/out
+> ghc yourProgram.hs
+
+> yourProgram -p start/yourhost/yourport
+
+```
 Plans:
 ======
 
