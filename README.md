@@ -172,6 +172,6 @@ See [distrbutedApps](https://github.com/transient-haskell/transient-examples/blo
 Plans:
 ======
 
-Axiom is in the process of becoming a Server-side as well as Client-side library for creating Web application. The last release support page templates for the creation of server-side content.
+Axiom web nodes are client side applications. So dHTML rendering happens on the browser. It is intended to implement server side rendering as well as multipage navigation. The last release support page navigation and page templates for the creation of server-side content.
 
 
