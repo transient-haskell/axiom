@@ -163,7 +163,7 @@ in the same or another computer or docker instance:
 > yourProgram -p start/host3/port3/add/host1/port1/y
 ```
 
-Be sure that the host:port addresses are reachable from all the machines.
+Be sure that the `host:port` ip addresses are reachable from all the machines.
 
 This connect all the server nodes among them. The web browser can point to any of them if you hace the js files compiled by GHCJS in the `static` folder of each execution location.
 
