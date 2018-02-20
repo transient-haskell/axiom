@@ -73,7 +73,7 @@ That header, besides executing the application, it would also create a "program"
 
 More complicated projects can be compiled and executed using `cabal` and `stack`. You can modify the header accordingly.
 
-For example this is a program that should execute with docker
+For example, this is a program that is directly executable with docker
 
 ```haskell
 #!/usr/bin/env ./execthirdline.sh
@@ -104,7 +104,7 @@ main= keep . initNode . onBrowser $ do
     fibs = 0 : 1 : zipWith (+) fibs (tail fibs) :: [Int]  -- fibonacci numb. definition
 ```
 
-To execute your program:
+To execute the program:
 ```
 > chmod 777 YourSource.hs
 > ./YourSource.hs -p start/<host>/<port>
