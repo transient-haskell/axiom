@@ -98,15 +98,17 @@ main= keep . initNode . onBrowser $ do
 To execute your program:
 ```
 > chmod 777 YourSource.hs
-> ./YourSource.hs -p start/localhost/port
+> ./YourSource.hs -p start/<host>/<port>
 ```
+
+where <host> <port>  are defined by you. for example `./YourSource.hs -p start/localhost/8080`
 
 The program will be accessed from outside docker as a web application. Read the documentation of Docker for your platform about how to invoke it.
 
-If you want to run it in a host Linux machine, you can export the JS code and the binary to a host folder and execute it:
+If you want to run it in a host Linux machine, you can export the JS code and the binary to a folder in the host and execute it:
 
 ```
-> YourProgram - p start/yourhost/port
+> YourProgram - p start/localhost/8080
 ```
 
 If you want to install Axiom in your host machine:
