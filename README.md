@@ -57,22 +57,31 @@ Then add this to the head of your main source file:
 ```csh
 #!/usr/bin/env ./execthirdline.sh
 -- compile it with ghcjs and  execute it with runghc
--- set -e && port=`echo ${3} | awk -F/ '{print $(3)}'` && docker run -it -p ${port}:${port} -v $(pwd):/work agocorona/transient:24-03-2017  bash -c "mkdir -p static && ghcjs /work/${1} -o static/out && runghc /work/${1} ${2} ${3}"
+-- set -e && port=`echo ${3} | awk -F/ '{print $(3)}'` && docker run -it -p ${port}:${port} -v $(pwd):/work agocorona/transient:24-03-2017  bash -c "cd work && mkdir -p static && ghcjs ${1} -o static/out && runghc ${1}  ${2} ${3}"
 ```
 
-That header compiles the program with GHCJS, then install the javascript generated and then executes `runghc` to execute the server program in interpreted mode. 
+That header compiles the program with GHCJS and write the javascript code generated to the "static" folder and then executes  server program in interpreted mode with `runghc`. This is useful for rapid development, since you can modify the code and re-execute it very fast.
 
-To generate the binary server. you can susbstitute  `runghc` by `ghc`.
+To fully compile and execute the program, you can susbstitute `runghc` by `ghc` and execute the binary. The header would look like:
+
+```csh
+#!/usr/bin/env ./execthirdline.sh
+-- compile it with ghcjs and  execute it with runghc
+-- set -e && port=`echo ${3} | awk -F/ '{print $(3)}'` && docker run -it -p ${port}:${port} -v $(pwd):/work agocorona/transient:24-03-2017  bash -c "cd work && mkdir -p static && ghcjs ${1} -o static/out && ghc ${1}  -o program && chmod 777 program && ./program ${2} ${3}"
+```
+That header, besides executing the application, it would also create a "program"  executable in your host machine  (as well as an "static" folder with files needed for the client-side application. You can execute it natively in a linux distro in the way it will be described below.
+
+more complicated projects can be compiled and executed using `cabal` and `stack`. You can modify the header accordingly.
 
 For example this is a program that should execute with docker
 
 ```haskell
 #!/usr/bin/env ./execthirdline.sh
 -- compile it with ghcjs and  execute it with runghc
--- set -e && port=`echo ${3} | awk -F/ '{print $(3)}'` && docker run -it -p ${port}:${port} -v $(pwd):/work agocorona/transient:24-03-2017  bash -c "mkdir -p static && ghcjs /work/${1} -o static/out && runghc /work/${1} ${2} ${3}"
+-- set -e && port=`echo ${3} | awk -F/ '{print $(3)}'` && docker run -it -p ${port}:${port} -v $(pwd):/work agocorona/transient:24-03-2017  bash -c "cd work && mkdir -p static && ghcjs ${1} -o static/out && runghc ${1}  ${2} ${3}"
 
 import Prelude hiding (div, id, span)
-import Transient.Internals
+import Transient.Base
 import GHCJS.HPlay.View
 import Transient.Move
 import Transient.Indeterminism
@@ -105,16 +114,16 @@ where <host> <port>  are defined by you. for example `./YourSource.hs -p start/l
 
 The program will be accessed from outside docker as a web application. Read the documentation of Docker for your platform about how to invoke it.
 
-If you want to run it in a host Linux machine, you can export the JS code and the binary to a folder in the host and execute it:
+If you want to run it in a host Linux machine, you can generate the browser code and the executable from docker in the way described above. Then in in the host you can execute it:
 
 ```
-> YourProgram - p start/localhost/8080
+> ./program - p start/localhost/8080
 ```
 
 If you want to install Axiom in your host machine:
 --------------------------------------------------
 
-You need to install [stack](https://docs.haskellstack.org/en/stable/README/) and [ghcjs](https://github.com/ghcjs/ghcjs)
+You need to install [stack](https://docs.haskellstack.org/en/stable/README/) and [ghcjs](https://github.com/ghcjs/ghcjs). The latter is not an easy task.
 
 Then install Axiom in stack/ghc:
 
@@ -130,7 +139,7 @@ Alternatively, you can install [Haskell platform](https://www.haskell.org/platfo
 > cabal install axiom
 ```
 
-Then install Axiom in GHCJS:
+In any case you need to install Axiom in GHCJS too:
 
 ```
 > cabal install axiom --ghcjs
@@ -140,7 +149,7 @@ How to compile and run a program
 ================================
 ```
 > mkdir -p static 
-> ghcjs /work/yourProgram.hs -o static/out
+> ghcjs yourProgram.hs -o static/out
 > ghc yourProgram.hs
 
 > yourProgram -p start/yourhost/yourport
@@ -152,7 +161,7 @@ How to run Distributed applications
 
 If your program use `inputNodes` to connect N server nodes, you must use additional parameters in the command line:
 
-in a computer/ docker instance:
+in a computer or docker instance:
 ```
 > yourProgram -p start/host1/port1
 ```
@@ -167,7 +176,9 @@ in the same or another computer or docker instance:
 
 Be sure that the `host:port` ip addresses are reachable from all the machines.
 
-This connect all the server nodes among them. The web browser can point to any of them if you hace the js files compiled by GHCJS in the `static` folder of each execution location.
+This connect all the server nodes among them. 
+
+The web browser can point to any host:port of them. You must have the static folder (wich contains the generated javascript files) as well as the executable in all the locations.
 
 See [distrbutedApps](https://github.com/transient-haskell/transient-examples/blob/master/distributedApps.hs) that contain examples of distributed web applications.
 
