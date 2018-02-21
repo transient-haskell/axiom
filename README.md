@@ -46,7 +46,7 @@ use `initNode` to initalize the application. Example below.
 
 If you have docker
 ------------------
-, you can run a transient image that has GHC, GHCJS and Transient installed. Then create this program with this content and save it to an executable location:
+You can use a docker image that has GHC, GHCJS and Transient installed. First you should create this executable shell with this content and save it to an executable location:
 ```
 $ cat execthirdline.sh
 command=`sed -n '3p' ${1} | sed 's/-- //'`
