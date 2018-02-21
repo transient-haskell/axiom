@@ -57,7 +57,7 @@ Then add this to the head of your main source file:
 ```csh
 #!/usr/bin/env ./execthirdline.sh
 -- compile an Axiom program with ghcjs and execute it with runghc
--- set -e && port=`echo ${3} | awk -F/ '{print $(3)}'` && docker run -it -p ${port}:${port} -v $(pwd):/work agocorona/transient:24-03-2017  bash -c "cd work && mkdir -p static && ghcjs ${1} -o static/out && runghc ${1}  ${2} ${3}"
+-- set -e && port=`echo ${3} | awk -F/ '{print $(3)}'` && docker run -it -p ${port}:${port} -v $(pwd):/work agocorona/transient:24-03-2017  bash -c "mkdir -p static && ghcjs /work/${1} -o /work/static/out && runghc /work/${1}  ${2} ${3}"
 ```
 
 That header compiles the program with GHCJS and write the javascript code generated to the "static" folder and then executes the server program in interpreted mode with `runghc`. This is useful for rapid development, since you can modify the code and re-execute it very fast.
@@ -78,7 +78,7 @@ For example, this is a program that is directly executable with docker
 ```haskell
 #!/usr/bin/env ./execthirdline.sh
 -- compile it with ghcjs and  execute it with runghc
--- set -e && port=`echo ${3} | awk -F/ '{print $(3)}'` && docker run -it -p ${port}:${port} -v $(pwd):/work agocorona/transient:24-03-2017  bash -c "cd work && mkdir -p static && ghcjs ${1} -o static/out && runghc ${1}  ${2} ${3}"
+-- set -e && port=`echo ${3} | awk -F/ '{print $(3)}'` && docker run -it -p ${port}:${port} -v $(pwd):/work agocorona/transient:24-03-2017  bash -c "mkdir -p static && ghcjs /work/${1} -o /work/static/out && runghc /work/${1}  ${2} ${3}"
 
 import Prelude hiding (div, id, span)
 import Transient.Base
