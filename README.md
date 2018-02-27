@@ -57,7 +57,7 @@ Then add this to the head of your main source file:
 ```csh
 #!/usr/bin/env ./execthirdline.sh
 -- compile an Axiom program with ghcjs and execute it with runghc
--- set -e && port=`echo ${3} | awk -F/ '{print $(3)}'` && docker run -it -p ${port}:${port} -v $(pwd):/work agocorona/transient:24-03-2017  bash -c "mkdir -p static && ghcjs /work/${1} -o /work/static/out && runghc /work/${1}  ${2} ${3}"
+-- set -e && port=`echo ${3} | awk -F/ '{print $(3)}'` && docker run -it -p ${port}:${port} -v $(pwd):/work agocorona/transient:24-03-2017  bash -c "cd work && mkdir -p ./static && ghcjs ${1} -o static/out && runghc ${1} ${2} ${3}"
 ```
 
 That header compiles the program with GHCJS and write the javascript code generated to the "static" folder and then executes the server program in interpreted mode with `runghc`. This is useful for rapid development, since you can modify the code and re-execute it very fast.
@@ -67,7 +67,7 @@ To fully compile and execute the program, you can susbstitute `runghc` by `ghc` 
 ```csh
 #!/usr/bin/env ./execthirdline.sh
 -- compile an Axiom program with ghcjs and with ghc, then execute the program
--- set -e && port=`echo ${3} | awk -F/ '{print $(3)}'` && docker run -it -p ${port}:${port} -v $(pwd):/work agocorona/transient:24-03-2017  bash -c "cd work && mkdir -p static && ghcjs ${1} -o static/out && ghc ${1}  -o program && chmod 777 program && ./program ${2} ${3}"
+-- set -e && port=`echo ${3} | awk -F/ '{print $(3)}'` && docker run -it -p ${port}:${port} -v $(pwd):/work agocorona/transient:24-03-2017  bash -c "cd work && mkdir -p ./static && ghcjs ${1} -o static/out && ghc ${1}  -o program && chmod 777 program && ./program ${2} ${3}"
 ```
 That header, besides executing the application, it would also create a "program"  executable in your host machine  (as well as an "static" folder with files needed for the client-side application. You can execute it natively in a linux distro in the way it will be described below.
 
@@ -78,7 +78,7 @@ For example, this is a program that is directly executable with docker
 ```haskell
 #!/usr/bin/env ./execthirdline.sh
 -- compile it with ghcjs and  execute it with runghc
--- set -e && port=`echo ${3} | awk -F/ '{print $(3)}'` && docker run -it -p ${port}:${port} -v $(pwd):/work agocorona/transient:24-03-2017  bash -c "mkdir -p static && ghcjs /work/${1} -o /work/static/out && runghc /work/${1}  ${2} ${3}"
+-- set -e && port=`echo ${3} | awk -F/ '{print $(3)}'` && docker run -it -p ${port}:${port} -v $(pwd):/work agocorona/transient:24-03-2017  bash -c "cd work && mkdir -p ./static && ghcjs ${1} -o static/out && runghc ${1}  ${2} ${3}"
 
 import Prelude hiding (div, id, span)
 import Transient.Base
@@ -148,7 +148,7 @@ In any case you need to install Axiom in GHCJS too:
 How to compile and run a program
 ================================
 ```
-> mkdir -p static 
+> mkdir  static 
 > ghcjs yourProgram.hs -o static/out
 > ghc yourProgram.hs
 
