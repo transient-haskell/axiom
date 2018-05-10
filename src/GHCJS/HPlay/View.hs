@@ -80,7 +80,6 @@ module GHCJS.HPlay.View(
   , pass
   -- * Low-level and Internals
   , ElemID
-  , FormInput(..)
   , getNextId
   , genNewId
   , continuePerch
@@ -97,10 +96,11 @@ module GHCJS.HPlay.View(
   , getValue
   -- * Re-exported
   , module Control.Applicative
-  , module GHCJS.Perch
+  , module GHCJS.Perch  
   -- remove
   ,CheckBoxes(..)
   ,edit
+  ,JSString,pack, unpack
 
 )  where
 
@@ -110,7 +110,7 @@ import           Transient.Logged
 import           Transient.Move.Utils
 import qualified Prelude(id,span,div)
 #ifndef ghcjs_HOST_OS
-import           Transient.Move(ParseContext(..))
+import           Transient.Parse hiding(parseString)
 import           Data.Char(isSpace)
 import           System.Directory
 import           System.IO.Error
@@ -120,7 +120,7 @@ import qualified Data.ByteString.Lazy.Char8 as BS
 #endif
 
 import           Control.Monad.State
-import qualified Data.Map                as M
+-- import qualified Data.Map                as M
 
 import           Control.Applicative
 import           Control.Concurrent
@@ -150,7 +150,7 @@ import           Transient.Move          hiding (pack)
 import           Data.JSString           as JS hiding (empty, center,span, strip,foldr,head,tail)
 #else
 import           GHCJS.Perch             hiding (JSVal, JsEvent (..), eventName, option,head, map)
-import           Transient.Move          hiding (JSString, pack)
+import           Transient.Move          
 #endif
 
 #ifndef ghcjs_HOST_OS
@@ -195,16 +195,17 @@ getValue = undefined
 getName = undefined
 #endif
 
-elemBySeq :: (MonadState EventF m,MonadIO m)  => JSString -> m (Maybe Elem)
+elemBySeq :: (MonadState EventF m, MonadIO m) => JSString -> m (Maybe Elem)
 #ifdef ghcjs_HOST_OS
-elemBySeq id=  do
-   IdLine _ id1 <- getData `onNothing` error ("not found: " ++ show id) --  return (IdLine "none")
-   return  ()                                                    !> ("elemBySeq",id1, id)
-   liftIO $ do
-      re <- elemBySeqDOM  id1 $ JS.takeWhile (/='p') id
-      fromJSVal re
+elemBySeq id = do
+    IdLine _ id1 <- getData `onNothing` error ("not found: " ++ show id) --  return (IdLine "none")
+    return  ()                                                    !> ("elemBySeq",id1, id)
+    liftIO $ do
+        let id2= JS.takeWhile (/='p') id
+        re <- elemBySeqDOM id1 id2
+        fromJSVal re
 #else
-elemBySeq _= return Nothing
+elemBySeq _ = return Nothing
 #endif
 
 #ifdef ghcjs_HOST_OS
@@ -241,28 +242,17 @@ newtype Widget a=  Widget{ norender :: TransIO a} deriving(Monad,MonadIO, Altern
 instance   Functor Widget where
   fmap f mx=   Widget. Transient $ fmap (fmap f) . runTrans $ norender mx
 
---instance Alternative Widget where
---   empty= Widget empty
---   (Widget x) <|> (Widget y)=  Widget $ Transient $ do
---            rx <- runTrans x
---            ry <- runTrans y
---            return $ rx <|> ry
 
 
 instance Applicative Widget where
   pure= return
 
-  Widget (Transient x) <*> Widget (Transient y) = Widget .Transient  $ do
-          mn <- getData
-          mrepeat <-getData
-
-          when (isJust mn && mrepeat == Just ExecEvent) $ do
-            let IDNUM n = fromJust mn in modify $  \s -> s{mfSequence=  n}
-                                                                           -- !> ("SET IDMUN", n)
-            delData $ IDNUM 0
-          mx <- x
-          my <- y
-          return $ mx <*> my
+  Widget (Transient x) <*> Widget (Transient y) = Widget . Transient $ do
+        cont <- get
+        setData $ Alternative cont
+        mx <- x
+        my <- y
+        return $ mx <*> my
 
 
 
@@ -274,13 +264,8 @@ instance AdditionalOperators Widget where
 
     Widget (Transient x) <** Widget (Transient y)=
           Widget . Transient $ do
-                 mn <- getData
-                 mrepeat <-getData
-                 liftIO $ print ("IDNUM",mn)
-                 when (isJust mn && mrepeat == Just ExecEvent) $ do
-                    let IDNUM n = fromJust mn in modify $  \s -> s{mfSequence=  n}
---                                                                                 !> ("SET IDMUN", n)
-                    delData $ IDNUM 0
+                 cont <- get
+                 setData $ Alternative cont
                  mx <- x
                  y
                  return mx
@@ -335,22 +320,22 @@ type OnClick1= Maybe JSString
 -- instance of this class.
 -- See "MFlow.Forms.Blaze.Html for the instance for blaze-html" "MFlow.Forms.XHtml" for the instance
 -- for @Text.XHtml@ and MFlow.Forms.HSP for the instance for Haskell Server Pages.
-class (Monoid view,Typeable view)   => FormInput view where
-    fromStr :: JSString -> view
-    fromStrNoEncode :: String -> view
-    ftag :: JSString -> view  -> view
-    inred   :: view -> view
-    flink ::  JSString -> view -> view
-    flink1:: JSString -> view
-    flink1 verb = flink verb (fromStr verb)
-    finput :: Name -> Type -> Value -> Checked -> OnClick1 -> view
-    ftextarea :: JSString -> JSString -> view
-    fselect :: JSString -> view -> view
-    foption :: JSString -> view -> Bool -> view
-    foption1 :: JSString -> Bool -> view
-    foption1   val msel= foption val (fromStr val) msel
-    formAction  :: JSString -> JSString -> view -> view
-    attrs :: view -> Attribs -> view
+-- class (Monoid view,Typeable view)   => FormInput view where
+--     fromStr :: JSString -> view
+--     fromStrNoEncode :: String -> view
+--     ftag :: JSString -> view  -> view
+--     inred   :: view -> view
+--     flink ::  JSString -> view -> view
+--     flink1:: JSString -> view
+--     flink1 verb = flink verb (fromStr verb)
+--     finput :: Name -> Type -> Value -> Checked -> OnClick1 -> view
+--     ftextarea :: JSString -> JSString -> view
+--     fselect :: JSString -> view -> view
+--     foption :: JSString -> view -> Bool -> view
+--     foption1 :: JSString -> Bool -> view
+--     foption1   val msel= foption val (fromStr val) msel
+--     formAction  :: JSString -> JSString -> view -> view
+--     attrs :: view -> Attribs -> view
 
 type Attribs= [(JSString, JSString)]
 
@@ -368,17 +353,18 @@ fromValidated NoParam= error "fromValidated : NoParam"
 fromValidated (NotValidated s err)= error $ "fromValidated: NotValidated "++ s
 
 getParam1 :: ( Typeable a, Read a, Show a)
-          => JSString ->  StateIO (ParamResult Perch a)
-getParam1 par = do
+          => Bool -> JSString ->  StateIO (ParamResult Perch a)
+getParam1 exact  par = do
    isTemplate <- liftIO $ readIORef execTemplate
    if isTemplate then return NoParam else do
-       me <- elemBySeq par !> par
+      
+       me <- if exact then elemById par else elemBySeq par
 --                                                !> ("looking for " ++ show par)
        case me of
          Nothing -> return  NoParam
          Just e ->  do
-           v <- getValue e                       -- !!> ("exist" ++ show par)
-           readParam v                           -- !!> ("getParam for "++ show v)
+            v <- getValue e                       -- !!> ("exist" ++ show par)
+            readParam v                           -- !!> ("getParam for "++ show v)
 
 
 type Params= Attribs
@@ -397,13 +383,17 @@ readParam (Just x1) = r
 
  maybeRead str= do
    let typeofx = typeOf x
-   if typeofx == typeOf  ( undefined :: String)   then
+   if typeofx == typeOf  ( undefined :: String)     then
            return . Validated $ unsafeCoerce str            -- !!> ("maybread string " ++ str)
-    else case reads $ str  of          --            -- !!> ("read " ++ str) of
+   else if typeofx == typeOf(undefined :: JSString) then
+           return . Validated $ unsafeCoerce $ pack  str
+   else case reads $ str  of          --            -- !!> ("read " ++ str) of
               [(x,"")] ->  return $ Validated x            -- !!> ("readsprec" ++ show x)
               _ -> do
-                   let err= inred . fromStr $ toJSString $ "can't read \"" ++ str ++ "\" as type " ++  show (typeOf x)
+                   let err= inred $ "can't read \"" ++ str ++ "\" as type " ++  show (typeOf x)
                    return $ NotValidated str err
+
+
 
 -- | Validates a form or widget result against a validating procedure
 --
@@ -420,7 +410,7 @@ validate  w val=  do
           me <- val x
           case me of
              Just str -> do
-                  liftIO $ withElem idn $ build $ clear >> inred  str
+                  liftIO $ withElem idn $ build $ clear >> (inred  str)
                   return Nothing
              Nothing  -> do
                   liftIO $ withElem idn $ build clear
@@ -439,7 +429,6 @@ rprefix= unsafePerformIO $ newIORef 0
 #ifdef ghcjs_HOST_OS
 genNewId ::  (MonadState EventF m, MonadIO m) => m  JSString
 genNewId=  do
---      Prefix pre <-  getData `onNothing` return (Prefix "")
       r <- liftIO $ atomicModifyIORef rprefix (\n -> (n+1,n))
       n <- genId
       let nid= toJSString $  ('n':show n) ++ ('p':show r)
@@ -592,7 +581,7 @@ whidden x= res where
       let showx= case cast x of
                   Just x' -> x'
                   Nothing -> show x
-      r <- getParam1 n  `asTypeOf` typef res
+      r <- getParam1 False n  `asTypeOf` typef res
       addSData (finput n "hidden" (toJSString showx) False Nothing :: Perch)
       return (valToMaybe r)
       where
@@ -629,8 +618,8 @@ getParamS look type1 mvalue= do
               else toJSString $ show v             -- !!> "show"
 
     setData HasElems
-    r <- getParam1 tolook
-
+    r <- getParam1 (isJust look) tolook
+    
     case r of
        Validated x        -> do addSData (finput tolook type1 (nvalue $ Just x) False Nothing :: Perch) ; return $ Just x            -- !!> "validated"
        NotValidated s err -> do addSData (finput tolook type1  (toJSString s) False Nothing <> err :: Perch); return Nothing
@@ -645,7 +634,7 @@ getMultilineText :: JSString
 getMultilineText nvalue =  res where
  res= Widget. Transient $ do
     tolook <- genNewId   !>  "GETMULTI"
-    r <- getParam1 tolook  `asTypeOf` typef res
+    r <- getParam1 False tolook  `asTypeOf` typef res
     case r of
        Validated x        -> do addSData (ftextarea tolook  $ toJSString x :: Perch); return $ Just x     !> "VALIDATED"
        NotValidated s err -> do addSData (ftextarea tolook   (toJSString s) :: Perch); return  Nothing    !> "NOTVALIDATED"
@@ -677,7 +666,7 @@ getSelect opts = res where
     tolook <- genNewId
     -- st <- get
 --    setData HasElems
-    r <- getParam1 tolook `asTypeOf` typef res
+    r <- getParam1 False tolook `asTypeOf` typef res
 --    setData $ fmap MFOption $ valToMaybe r
     runView $ fselect tolook <<< opts
 --
@@ -799,10 +788,11 @@ data Path= Path [JSString]
 staticNav  x= do
   Path paths <-  getState <|> return (Path  [])
   x <*** setState (Path paths)
+  
 
 -- | template link. Besides the wlink behaviour, it loads the page from the server if there is any
 --
--- the page many have been saved with `edit`
+-- the page may have been saved with `edit`
 tlink :: (Show a,  Typeable a) => a -> Perch -> Widget a
 tlink x v= Widget  $
 
@@ -897,7 +887,6 @@ tlink x v= Widget  $
          else do
 --            setData ExecTemplate     !> "SET EXECTEMPLATE 2"
 --            liftIO $ writeIORef execTemplate True
-            liftIO $ print (pathelem, segment)
             if unpack pathelem /= segment then  empty else do
                    liftIO $ writeIORef rReadIndexPath $ l + 1
                    asynchronous
@@ -960,28 +949,28 @@ parseString= do
 
     where
     isSeparator c=  c == '>'
-    dropSpaces= parse $ \str ->((),BS.dropWhile isSpace str)
+    --dropSpaces= parse $ \str ->((),BS.dropWhile isSpace str)
 
 
-tTakeWhile :: (Char -> Bool) -> TransIO BS.ByteString
-tTakeWhile cond= parse (span' cond)
-  where
-  span' cond s=
-     let (h,t) = BS.span cond s
-         c= BS.head t
-     in (BS.snoc h c,BS.drop 1 t)
+-- tTakeWhile :: (Char -> Bool) -> TransIO BS.ByteString
+-- tTakeWhile cond= parse (span' cond)
+--   where
+--   span' cond s=
+--      let (h,t) = BS.span cond s
+--          c= BS.head t
+--      in (BS.snoc h c,BS.drop 1 t)
 
 
-parse ::  (BS.ByteString -> (b, BS.ByteString)) -> TransIO b
-parse split= do
-    ParseContext readit str <- getSData
-                                <|> error "parse: ParseContext not found"
-                                :: TransIO (ParseContext BS.ByteString)
+-- parse ::  (BS.ByteString -> (b, BS.ByteString)) -> TransIO b
+-- parse split= do
+--     ParseContext readit str <- getSData
+--                                 <|> error "parse: ParseContext not found"
+--                                 :: TransIO (ParseContext BS.ByteString)
 
-    if BS.null str then empty else do
-       let (ret,str3) = split str
-       setData $ ParseContext readit  str3
-       return ret
+--     if BS.null str then empty else do
+--        let (ret,str3) = split str
+--        setData $ ParseContext readit  str3
+--        return ret
 
 
 
@@ -1061,7 +1050,7 @@ widget <! attribs=  Widget . Transient $ do
       rest <- getData `onNothing` return mempty
       delData rest
       mx <- runView widget
-      fs <- getData `onNothing` return mempty
+      fs <- getData `onNothing` return (mempty :: Perch)
       setData  $ rest <> (fs `attrs` attribs :: Perch)
       return mx
 
@@ -1112,39 +1101,39 @@ isEmpty w= Widget $ Transient $ do
 
 
 -------------------------
-instance   FormInput Perch  where
-    fromStr = toElem
-    fromStrNoEncode  = toElem
-    ftag n v =  nelem n `child` v
+fromStr = toElem
+--     fromStrNoEncode  = toElem
+ftag n v =  nelem n `child` v
 
-    attrs tag  [] = tag
-    attrs tag (nv:attribs) = attrs (attr tag nv) attribs
+--     attrs tag  [] = tag
+attrs tag (nv:attribs) = attrs (attr tag nv) attribs
 
-    inred msg=  ftag "b" msg `attrs` [("style","color:red")]
+inred msg=  ftag "b" msg `attrs` [("style","color:red")]
 
-    finput n t v f c=
+finput n t v f c=
        let
-        tag= ftag "input" mempty `attrs` [("type",  t), ("id",  n), ("value",  v)]
-        tag1= if f then tag `attrs` [("checked", "")] else tag
-       in case c of Just s -> tag1 `attrs` [("onclick", s)] ; _ -> tag1
+        tag= input ! atr "type" t ! id   n ! atr "value"   v
+        tag1= if f then tag ! atr "checked" "" else tag
+       in case c of Just s -> tag1 ! atr "onclick" s; _ -> tag1
 
-    ftextarea nam text=
-        ftag "textarea" mempty `attrs` [("id",  nam)] `child` text
-
-
-    fselect nam list = ftag "select" mempty `attrs` [("id", nam)] `child` list
-    foption  name v msel=
-      let tag=  ftag "option" mempty `attrs` [("value", name)]  `child`  v
-      in if msel then tag `attrs` [("selected", "")] else tag
+ftextarea nam text=
+         textarea ! id  nam $ text
 
 
-    formAction action method1 form = ftag "form" mempty `attrs` [("acceptCharset", "UTF-8")
-                                                         ,( "action", action)
-                                                         ,("method",  method1)]
-                                                         `child` form
+fselect nam list = select ! id nam $ list
+
+foption  name v msel=
+      let tag=  nelem "option" ! atr "value" name  `child`  v
+      in if msel then tag ! atr "selected" "" else tag
 
 
-    flink  v str = ftag "a" mempty `attrs` [("href",  v)] `child` str
+--     formAction action method1 form = ftag "form" mempty `attrs` [("acceptCharset", "UTF-8")
+--                                                          ,( "action", action)
+--                                                          ,("method",  method1)]
+--                                                          `child` form
+
+
+--     flink  v str = ftag "a" mempty `attrs` [("href",  v)] `child` str
 
 
 ---------------------------
@@ -1369,7 +1358,7 @@ execTemplate= unsafePerformIO $ newIORef False
 
 -- first identifier for an applicative widget expression
 -- needed for applictives in the widget monad that are executed differently than in the TransIO monad
-newtype IDNUM = IDNUM Int deriving Show
+-- newtype IDNUM = IDNUM Int deriving Show
 
 data Event= forall ev.IsEvent ev => Event ev
 
@@ -1399,7 +1388,7 @@ eventRef= unsafePerformIO $ newIORef $ EventSet []
 raiseEvent ::  IsEvent event  => Widget a -> event -> Widget a
 #ifdef ghcjs_HOST_OS
 raiseEvent w event = Widget . Transient $ do
-       cont <- get                                             -- !> "raise"
+       Alternative cont <- getData  `onNothing` (Alternative <$> get)
        let iohandler :: EventData -> IO ()
            iohandler eventdata =do
                 runStateT (setData eventdata >> runCont' cont) cont  --  !> "runCont INIT"
@@ -1408,17 +1397,19 @@ raiseEvent w event = Widget . Transient $ do
        id <- genNewId
        let id'= JS.takeWhile (/='p') id
        addEventList id' event iohandler
+       template <-liftIO $ readIORef execTemplate 
+       if not template then runView $ addEvent  id event iohandler <<< w  
+       else do
+          me <- elemBySeq id'                                          --  !> ("adding event to",  id')
+          case me of
 
-       me <- elemBySeq id'                                          --  !> ("adding event to",  id')
-       case me of
-
-         Nothing -> runView $ addEvent  id event iohandler <<< w      -- !> "do not exist, creating elem"
-         Just e -> do
-           mr <- getData                                              -- !> "exist adding event to current element"
-           when (mr /= Just ExecEvent) $ liftIO (buildHandler e event iohandler)
-           r <- runView w
-           delData noHtml
-           return r
+            Nothing -> runView $ addEvent  id event iohandler <<< w      !> "do not exist, creating elem"
+            Just e -> do
+              mr <- getData                                              !> "exist adding event to current element"
+              when (mr /= Just ExecEvent) $ liftIO (buildHandler e event iohandler)
+              r <- runView w
+              delData noHtml
+              return r
 
    where
    -- to restore event handlers when a new template is loaded
@@ -1433,9 +1424,8 @@ raiseEvent w event = Widget . Transient $ do
 
 
    runCont' cont= do
---     mn <- getData
---     when (isJust mn) $ let IDNUM n = fromJust mn in modify $  \s -> s{mfSequence=  n}
      setData ExecEvent                              --  !> "REPEAT: SET EXECEVENT"
+
      liftIO $ writeIORef execTemplate False
      mr <- runClosure cont
      return ()
@@ -1484,6 +1474,7 @@ pass v event= do
         wraw v `wake` event
         e@(EventData typ _) <- getEventData
         guard (eventName event== typ)
+
         return e
 
 
@@ -1528,7 +1519,7 @@ runBody w= do
   runWidget  w body
 
 
-data AlternativeBranch= Alternative deriving (Typeable, Eq, Show)
+newtype AlternativeBranch= Alternative EventF deriving Typeable
 
 -- | executes the computation and  add the effect of "hanging" the generated rendering from the one generated by the
 -- previous `render` sentence, or from the body of the document, if there isn't any. If an event happens within
@@ -1555,7 +1546,7 @@ render  mx = Transient $ do
        ma <- getData
        mw <- getData 
        
-       id1 <- if (ma == Just Alternative || mw == Just WasParallel) !> (ma,mw)
+       id1 <- if (isJust (ma :: Maybe AlternativeBranch) || mw == Just WasParallel )   !> (mw)
                then do
                  id3 <- do
                      id3 <- genNewId !> "ALTERNATIVE"
@@ -1568,19 +1559,19 @@ render  mx = Transient $ do
                             me <- liftIO $   elemById id1' >>= \x ->
                                               case x of
                                                  Nothing -> return Nothing
-                                                 Just x -> nextSibling x
+                                                 Just x  -> nextSibling x
                             case me of
                               Nothing -> return id3 -- should not happen
-                              Just e -> attribute e "id" >>= return . fromJust
+                              Just e  -> attribute e "id" >>= return . fromJust
 
-                 setData (IdLine level id3)                             -- !> ("setDataAL1",id3)
-                 delData Alternative                                    -- !> ("alternative, creating", id3)
+                 setData (IdLine level id3)                              !> ("setDataAL1",id3)
+                 delData $ Alternative  undefined                                   !> ("alternative, creating", id3)
                  return id3
                else setData idline1 >> return id1'
 
        id2 <-  genNewId
        n <- gets mfSequence
-       setData $ IDNUM n
+      --  setData $ IDNUM n
 
 
 
@@ -1590,7 +1581,7 @@ render  mx = Transient $ do
 
         (Transient $ do
 
-           meid2 <- elemBySeq id2                                   -- !> ("checking",id1,id2)
+           meid2 <- elemBySeq id2                                    !> ("checking",id1,id2)
 
            case meid2 of
             Nothing -> return ()
@@ -1599,7 +1590,7 @@ render  mx = Transient $ do
                id2' <- attribute eid2 "id" >>= return . fromJust
 --               let n= read (tail $ JS.unpack  $ JS.dropWhile (/= 'p') id2') + 1
 --               liftIO $ writeIORef rprefix n   !>  ("N",n)
-               (setData (IdLine (level +1) id2'))                   -- !>  ("set IdLine",id2')
+               (setData (IdLine (level +1) id2'))                    !>  ("set IdLine",id2')
 
            execmode <- getData
 
@@ -1607,7 +1598,7 @@ render  mx = Transient $ do
              Just ExecEvent -> do
                 -- an event has happened. Clean previous rendering
                 when (isJust meid2) $ liftIO $ do
-                        deleteSiblings $ fromJust meid2                 -- !> "EVENT"
+                        deleteSiblings $ fromJust meid2                  !> "EVENT"
                         clearChildren $ fromJust meid2
                 delData ExecEvent
 
@@ -1616,7 +1607,7 @@ render  mx = Transient $ do
 
              _ -> do
 
-                 return ()                                               -- !> ("EXECTEMPLATE", isTemplate)
+                 return ()                                                !> ("EXECTEMPLATE", isTemplate)
                  if isTemplate then delData noHtml  else do
                      render <- getData `onNothing` (return  noHtml)      -- !> "TEMPLATE"
 
@@ -1627,13 +1618,15 @@ render  mx = Transient $ do
                      delData render
            return $ Just ())
        if(isJust r)
-         then  delData Alternative >> setData (IdLine (level +1) id2 )    -- !> ("setDataAl",id2)
-         else  setData Alternative  !> "SETDATA ALTERNATIVE"
+         then  delData (Alternative undefined) >> setData (IdLine (level +1) id2 )    -- !> ("setDataAl",id2)
+         else do 
+               cont <- get
+               setData (Alternative cont)  !> "SETDATA ALTERNATIVE"
        return r
 
 
 #else
-render (Widget x)= x
+render (Widget x)= empty
 #endif
 
 
@@ -1661,11 +1654,19 @@ data UpdateMethod= Append | Prepend | Insert deriving Show
 -- be appended, prepended to the previous content or it can erase the previous content depending on the
 -- update method.
 at ::  JSString -> UpdateMethod -> Widget a -> Widget  a
-at id method w= setAt id method <<< w
-
+at id method w= setAt id method <<< do
+  original@(IdLine level i) <- Widget $ getState <|> error "IdLine not defined"
+  setState $ IdLine level  "n0p0"
+  w  `with` setState original
+  where
+  with    (Widget (Transient x)) (Widget (Transient y))=
+    Widget . Transient $ do
+           mx <- x
+           y
+           return mx
 
 setAt :: JSString -> UpdateMethod -> Perch  -> Perch
-setAt id method render  = liftIO $ case method of
+setAt id method render  = liftIO $   case method of
      Insert -> do
              forElems_ id $ clear >> render
              return ()
@@ -1705,9 +1706,10 @@ foreign import javascript unsafe  "$1[$2].toString()" getProp :: Elem -> JSStrin
 
 foreign import javascript unsafe  "$1[$2] = $3" setProp :: Elem -> JSString -> JSString -> IO ()
 
-foreign import javascript unsafe  "alert($1)" alert ::  JSString -> IO ()
+foreign import javascript unsafe  "alert($1)" js_alert ::  JSString -> IO ()
 
-
+alert ::  (Show a,MonadIO m) => a -> m ()
+alert= liftIO . js_alert . pack . show 
 
 foreign import javascript unsafe  "document.getElementById($1)" elemByIdDOM
       :: JSString -> IO JSVal
@@ -1725,11 +1727,11 @@ foreign import javascript unsafe "$1.getAttribute($2)"
 #else
 unpack= undefined
 getProp :: Elem -> JSString -> IO JSString
-getProp = undefined
+getProp = error "getProp: undefined in server"
 setProp :: Elem -> JSString -> JSString -> IO ()
-setProp = undefined
-alert ::  JSString -> IO ()
-alert= undefined
+setProp = error "setProp: undefined in server"
+alert ::  (Show a,MonadIO m) => a -> m ()
+alert= liftIO . print
 data Callback a= Callback a
 data ContinueAsync=ContinueAsync
 syncCallback1= undefined

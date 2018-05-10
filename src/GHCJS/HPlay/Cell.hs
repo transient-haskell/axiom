@@ -14,23 +14,26 @@
 {-# LANGUAGE TypeSynonymInstances, FlexibleInstances, OverloadedStrings, CPP, ScopedTypeVariables #-}
 module GHCJS.HPlay.Cell(Cell(..),boxCell,bcell,(.=),get,mkscell,scell, gcell, calc)  where
 import Transient.Internals
+import Transient.Move --hiding (JSString)
 import GHCJS.HPlay.View
 import Data.Typeable
 import Unsafe.Coerce
 import qualified Data.Map as M hiding ((!))
 
-import Control.Monad.IO.Class
+import Control.Monad.State hiding (get)
 import Control.Monad
+import Data.Monoid
 import Data.List
 import Control.Exception
-
+import Data.IORef
+import System.IO.Unsafe
 #ifdef ghcjs_HOST_OS
 
 import Data.JSString hiding (empty)
 
 #else
 
-type JSString = String
+-- type JSString = String
 
 #endif
 
@@ -73,8 +76,10 @@ getID id = withElem id $ \e -> do
 typeIO :: (ElemID -> IO (Maybe a)) -> a
 typeIO = undefined
 
+typestring :: TypeRep
 typestring= typeOf (undefined :: String)
 
+show1 :: (Show a, Typeable a) => a -> String
 show1 x= if typeOf x== typestring
         then unsafeCoerce x
         else show x
@@ -127,66 +132,71 @@ infixr 0 .=  -- , ..=
 -- | within a `mkscell` formula, `gcell` get the the value of another cell using his name.
 --
 -- see http://tryplayg.herokuapp.com/try/spreadsheet.hs/edit
-gcell ::   JSString -> Widget Double
-gcell n= Widget $ do
-  Vars vars <- getSData <|> return(Vars M.empty ) -- liftIO $ readIORef rvars
+gcell ::   JSString -> Cloud Double
+gcell n= loggedc $ do
+  -- onAll $ do
+  --    cutExceptions
+  --    reportBack
+  vars <- getCloudState rvars <|> return M.empty  -- liftIO $ readIORef rvars
+  localIO  $ print ("gcell", n)
   case M.lookup n vars of
-    Just exp -> do inc n  exp;  exp
+    Just exp -> do  inc ;  exp  !> "executing exp"
     Nothing -> error $ "cell not found: " ++ show n
   where
-  inc n exp=  do
-     Tries tries maxtries<- getSData <|> do
-                                      Exprs exprs <- getSData
-                                      return . Tries 0 $ 3 * (M.size $  exprs)
+  inc  =  do
+     Tries tries maxtries <- getCloudState rtries <|> error "no tries" --do
+                                      -- Exprs exprs <- getCloudState
+                                      -- return . Tries 0 $ 3 * (M.size $  exprs)
+     localIO $ print tries
      if tries <= maxtries
-       then  setData $ Tries (tries+1) maxtries
-       else  back Loop
+       then  localIO $  writeIORef rtries $ Tries (tries+1) maxtries
+       else  local $ do
+         -- liftIO $ print "back"
+         back Loop
 
 data Loop= Loop deriving (Show,Typeable)
 
 instance Exception Loop
 
 -- a parameter is a function of all of the rest
-type Expr a = TransIO a
+type Expr a = Cloud a
 
 data Tries= Tries Int Int deriving Typeable
---rtries= unsafePerformIO $ newIORef $ (0::Int)
+rtries= unsafePerformIO $ newIORef $ Tries 0 0
 --maxtries=  3 * (M.size $ unsafePerformIO $ readIORef rexprs)
 
-newtype Exprs= Exprs (M.Map JSString (Expr Double))
---rexprs :: IORef (M.Map JSString (Expr Double))
---rexprs= unsafePerformIO $ newIORef M.empty      -- initial expressions
+-- newtype Exprs= Exprs (M.Map JSString (Expr Double))
+rexprs :: IORef (M.Map JSString (Expr Double))
+rexprs= unsafePerformIO $ newIORef M.empty      -- initial expressions
 
-newtype Vars= Vars (M.Map JSString (Expr Double))
---rvars :: IORef (M.Map JSString (Expr Double))
---rvars= unsafePerformIO $ newIORef M.empty       -- expressions actually used for each cell.
+-- newtype Vars= Vars (M.Map JSString (Expr Double))
+rvars :: IORef (M.Map JSString (Expr Double))
+rvars= unsafePerformIO $ newIORef M.empty       -- expressions actually used for each cell.
                                                 -- initially, A mix of reexprs and rmodified
                                                 -- and also contains the result of calculation
 
-newtype Modified= Modified (M.Map JSString (Expr Double)) deriving Typeable
---rmodified :: IORef (M.Map JSString (Expr Double))
---rmodified= unsafePerformIO $ newIORef M.empty    -- cells modified by the user or by the loop detection mechanism
+-- newtype Modified= Modified (M.Map JSString (Expr Double)) deriving Typeable
+rmodified :: IORef (M.Map JSString ( Double))
+rmodified= unsafePerformIO $ newIORef M.empty    -- cells modified by the user or by the loop detection mechanism
 
 
 -- | make a spreadsheet cell. a spreadsheet cell is an input-output box that takes input values from
 -- the user, has an expression associated and display the result value after executing `calc`
 --
 -- see http://tryplayg.herokuapp.com/try/spreadsheet.hs/edit
-mkscell :: JSString -> Maybe Double -> Expr Double -> Widget Double
-mkscell name val expr= mk (scell name expr) val
+mkscell :: JSString -> Expr Double -> Cloud (Cell Double)
+mkscell  name  expr= do
+  exprs <- onAll $ liftIO (readIORef rexprs) <|> return ( M.empty) -- readIORef rexprs
+  onAll $ liftIO $ writeIORef  rexprs $ M.insert name expr exprs
+  return $ scell name expr
 
---both mx= local $ runCloud mx   <** runCloud ( atRemote (clustered $ mx >> empty :: Cloud()))
 
 
 scell :: JSString -> Expr Double -> Cell Double
 scell id  expr= Cell{ mk= \mv -> Widget $  do
-                           Exprs exprs <- getSData <|> return (Exprs M.empty) -- readIORef rexprs
-                           setData . Exprs $ M.insert id expr exprs
-
-                           r <- norender $ getParam (Just id) "text"  mv `fire` OnKeyUp
-
-                           Modified mod <-  getSData <|>  return(Modified M.empty)
-                           setData . Modified  $ M.insert  id (return  r)  mod
+                           r <- norender $ getParam (Just id) "text"  mv `fire` OnChange
+                           mod <-  liftIO (readIORef rmodified) <|> return( M.empty)
+                           liftIO $ writeIORef rmodified $ M.insert id  r mod
                            return r
 
                     , setter= \x -> withElem id $ \e -> setProp e "value" (toJSString $ show1 x)
@@ -197,66 +207,97 @@ scell id  expr= Cell{ mk= \mv -> Widget $  do
 
 
 
+
 -- | executes the spreadsheet adjusting the vaules of the cells created with `mkscell` and solving loops
 --
 -- see http://tryplayg.herokuapp.com/try/spreadsheet.hs/edit
-calc :: Widget ()
-calc= Widget $  do
-  st <- getCont
-  return() `onBack` (\(e::Loop) -> do removeVar st e; forward Loop )
+calc :: Cloud ()
+calc=  do
+  mod <- localIO $ readIORef rmodified
+  onAll $ liftIO $ print ("LENGTH MOD", M.size mod)
+  onAll $ liftIO $ print "setCloudState modified"
+  setCloudState rmodified mod
+  exprs <- getCloudState rexprs
+  onAll $ liftIO $ print "setCloudState exprs"
+  setCloudState rexprs exprs
+  onAll $ liftIO $ print "setCloudState rvars"
 
-  Modified nvs <- getSData  <|> error "no modified" -- liftIO $ readIORef rmodified
+  setCloudState rvars  M.empty
 
-  when (not $ M.null nvs) $ do
-            values <-  calc1
-            mapM_ (\(n,v) -> boxCell n .= v)  values
+  onAll $ return() `onBack` (\(e::Loop) -> runCloud'  $ do localIO $ print "REMOVEVAR"; removeVar  e; local (forward Loop) )
+  exprs <- getCloudState rexprs <|> error "no exprs"
+  onAll $ liftIO $ print "setCloudState rtries"
 
---  liftIO $ writeIORef rmodified M.empty
+  setCloudState rtries $ Tries 0 $ 3 * (M.size $  exprs)
+  nvs <- getCloudState rmodified <|> error "no modified" -- liftIO $ readIORef rmodified
+
+  onAll $ liftIO $ print ("LENGTH NVS", M.size nvs)
+  when (not $ M.null nvs) $ calc1
+            --values <-  calc1
+            --localIO $ print "NEW CALC"
+            --local $ mapM_ (\(n,v) -> boxCell n .= v)  values
+  onAll $ liftIO $ print "setCloudState modified"
+  setCloudState rmodified M.empty
 
   where
-  run' st x=  runTransState st x >> return ()
 
 
-  calc1  :: TransIO [(JSString,Double)]
+  --calc1  :: Expr [(JSString,Double)]
   calc1= do
-    setData $ Tries 0 -- liftIO $ writeIORef rtries 0
-    Exprs cells    <- getSData <|> error "no exprs" -- liftIO $ readIORef rexprs
-    Modified nvs   <- getSData <|> error "mo modified2" -- liftIO $ readIORef rmodified
-    setData . Vars $ M.union nvs cells
-    solve
+      return () !> "CALC1"
+      cells    <- getCloudState rexprs <|> error "no exprs" -- liftIO $ readIORef rexprs
+      nvs      <- getCloudState rmodified <|> error "no modified2" -- liftIO $ readIORef rmodified
+      onAll $ liftIO $ print "setCloudState vars"
 
---solve  :: M.Map JSString (Widget a) -> Widget (M.Map JSString a)
-solve :: TransIO [(JSString,Double)]
-solve = do
-     Vars vars <- getSData <|> error "no vars" --  liftIO $ readIORef rvars
-     mapM (solve1 vars) $ M.toList vars
+      setCloudState rvars $ M.union (M.map return nvs) cells
+
+      solve
+
+  --solve :: Expr [(JSString,Double)]
+  solve =  do
+     vars <- getCloudState rvars <|> error "no vars" --  liftIO $ readIORef rvars
+     onAll $ liftIO $ print $ ("LENGHT VARS", M.size vars)
+     mapM_ (solve1 vars) $ M.toList vars
      where
-
      solve1 vars (k,f)= do
+        localIO $ print ("solve1",k)
         x <- f
-        setData . Vars $ M.insert k (return x) vars
-        return (k,x) :: TransIO (JSString,Double)
+        localIO $ print ("setcloudstate var",k,x)
+        local $ boxCell k .= x
+        setCloudState rvars $ M.insert k (return x) vars
+        return () -- (k,x) :: Expr (JSString,Double)
 
 
+setCloudState r v=  allNodes $  writeIORef r v
+getCloudState r= onAll . liftIO $ readIORef r
 
---  removeVar :: EventF -> SomeException -> IO () -- [(JSString,Double)]
-removeVar st  = \(e:: Loop) ->  do -- runCloud $ both $ localIO $ do
-    Modified nvs <- getSData <|>  error "no modified 3"-- readIORef rmodified
-    Exprs exprs  <- getSData <|>  error " no Exprs2" --readIORef rexprs
+--  removeVar ::SomeException -> IO () -- [(JSString,Double)]
+removeVar = \(e:: Loop) -> do
+  nvs <- getCloudState rmodified <|>  error "no modified 3"-- readIORef rmodified
+  -- mapM (\n -> snd n >>= \v ->  localIO $ print (fst n,v)) $ M.toList nvs
+  exprs  <- getCloudState rexprs <|>  error " no Exprs2" --readIORef rexprs
 
-    case  M.keys exprs \\ M.keys nvs of
-      [] -> error "non solvable circularity in cell dependencies"
-      (name:_) -> do
-         mv <- liftIO $ getID name
+  case  M.keys exprs \\ M.keys nvs of
+    [] -> error "non solvable circularity in cell dependencies"
+    (name:_) -> do
+      localIO $ print ("removeVar",name)
 
-         case mv of
-            Nothing -> return ()
-            Just v  -> do
-                setData . Modified  $ M.insert name ( return v) nvs
-                return ()   -- !> ("using",v)
-                norender calc -- runTransState st (norender calc)
-                return ()
+      mv <- localIO $ getID name
 
+      case mv of
+          Nothing -> return ()
+          Just v  -> do
+              onAll $ liftIO $ print "setCloudState modified"
+              setCloudState  rmodified  $ M.insert name v nvs
+              return ()
+
+allNodes :: IO () -> Cloud ()
+allNodes mx= loggedc $ (localIO mx)  <> (atRemote $ (localIO $ print "UPDATE" >> mx))
+
+--atBrowser mx= if isBrowserInstance then mx else atRemote mx
+
+--atServer mx= if not isBrowserInstance then mx else atRemote mx
+  
   -- http://blog.sigfpe.com/2006/11/from-l-theorem-to-spreadsheet.html
   -- loeb ::  Functor f => f (t -> a) -> f a
   --  loeb x = fmap (\a ->  a (loeb  x)) x
