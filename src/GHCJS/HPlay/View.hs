@@ -101,6 +101,7 @@ module GHCJS.HPlay.View(
   ,CheckBoxes(..)
   ,edit
   ,JSString,pack, unpack
+  ,RadioId(..), Radio(..)
 
 )  where
 
@@ -147,8 +148,10 @@ import           GHCJS.Perch             hiding (JsEvent (..), eventName, option
 import           GHCJS.Types
 import           Transient.Move          hiding (pack)
 
-import           Data.JSString           as JS hiding (empty, center,span, strip,foldr,head,tail)
+import qualified Data.JSString           as JS hiding (empty, center,span, strip,foldr,head)
+import           Data.JSString (pack,unpack,toLower)
 #else
+import           Data.List as JS         hiding (span)
 import           GHCJS.Perch             hiding (JSVal, JsEvent (..), eventName, option,head, map)
 import           Transient.Move          
 #endif
@@ -233,7 +236,7 @@ withElem id f= do
      Nothing -> error ("withElem: not found"++ fromJSString id)
      Just e -> f e
 
-data NeedForm= HasForm | HasElems  | NoElems deriving Show
+--data NeedForm= HasForm | HasElems  | NoElems deriving Show
 
 
 type ElemID= JSString
@@ -248,8 +251,11 @@ instance Applicative Widget where
   pure= return
 
   Widget (Transient x) <*> Widget (Transient y) = Widget . Transient $ do
-        cont <- get
-        setData $ Alternative cont
+        getData `onNothing` do 
+            cont <- get
+            let al= Alternative cont
+            setData $ Alternative cont
+            return al
         mx <- x
         my <- y
         return $ mx <*> my
@@ -258,17 +264,21 @@ instance Applicative Widget where
 
 instance Monoid a => Monoid (Widget a) where
   mempty= return mempty
-  mappend x y= (<>) <$> x <*> y
+  mappend x y= do 
+     (<>) <$> x  <*> y
 
 instance AdditionalOperators Widget where
 
-    Widget (Transient x) <** Widget (Transient y)=
-          Widget . Transient $ do
-                 cont <- get
-                 setData $ Alternative cont
-                 mx <- x
-                 y
-                 return mx
+    Widget (Transient x) <** Widget (Transient y)= Widget . Transient $ do
+                getData `onNothing` do 
+                  cont <- get
+                  let al= Alternative cont
+                  setData $ Alternative cont
+                  return al
+                 
+                mx <- x
+                y
+                return mx
 
     (<***) x y= Widget $  norender x <*** norender y
 
@@ -359,7 +369,7 @@ getParam1 exact  par = do
    if isTemplate then return NoParam else do
       
        me <- if exact then elemById par else elemBySeq par
---                                                !> ("looking for " ++ show par)
+                                                !> ("looking for " ++ show par)
        case me of
          Nothing -> return  NoParam
          Just e ->  do
@@ -491,69 +501,56 @@ getPassword = getParam Nothing "password" Nothing
 inputPassword ::   Widget String
 inputPassword= getPassword
 
-newtype Radio a= Radio a deriving Monoid
-
-
-
--- | Implement a radio button
--- the parameter is the name of the radio group
-setRadio :: (Typeable a, Eq a, Show a) =>
-            a ->  Widget  (Radio a)
-setRadio v = Widget $ Transient $ do
-  RadioId n <- getData `onNothing` error "setRadio out of getRadio"
-  id <- genNewId
-  st <- get
---  setData HasElems       -- only for MFlow
-  me <- elemBySeq id
-  checked <-  case me  of
-       Nothing -> return ""
-       Just e  -> liftIO $ getProp e "checked"
-  let strs= if  checked=="true" then Just v else Nothing
---  let mn= if null strs then False else True
-      ret= fmap  Radio  strs
-      str = if typeOf v == typeOf(undefined :: String)
-                   then unsafeCoerce v else show v
-
-  addSData
-      ( finput id "radio" (toJSString str) ( isJust strs ) Nothing `attrs` [("name",n)] :: Perch)
-
-  return ret
-
-setRadioActive :: (Typeable a, Eq a, Show a) =>
-                    a -> Widget (Radio a)
-setRadioActive rs = setRadio rs `raiseEvent` OnClick
+newtype Radio a= Radio a
 
 data RadioId= RadioId JSString deriving Typeable
 
+-- | Implement a radio button
+setRadio :: (Typeable a, Eq a, Show a,Read a) =>
+            Bool -> a ->  Widget  (Radio a)
+setRadio ch v = Widget $ Transient $ do
+  RadioId name <- getData `onNothing` error "setRadio out of getRadio"
+  id <- genNewId
+  me <- elemBySeq id  
+  checked <-  case me  of
+      Nothing -> return ""
+      Just e  -> liftIO $ getProp e "checked"
+  
+  let str = if typeOf v == typeOf(undefined :: String)
+                   then unsafeCoerce v else show v
+  addSData
+      ( finput id "radio" (toJSString str)  ch Nothing `attrs` [("name",name)] :: Perch)
+  
+  if  checked == "true" !> ("val",v) then Just . Radio . read1 . unpack <$> liftIO (getProp (fromJust me) "value") else return Nothing
+  where 
+  read1 x=r 
+    where
+    r= if typeOf r== typeOf (undefined :: String) then unsafeCoerce x 
+          else read x 
+
+setRadioActive :: (Typeable a, Eq a, Show a,Read a) =>
+                   Bool -> a -> Widget (Radio a)
+setRadioActive ch rs = setRadio ch rs `raiseEvent` OnClick
+
+
 -- | encloses a set of Radio boxes. Return the option selected
 getRadio
-  :: Monoid a => [Widget (Radio a)] -> Widget a
-getRadio ws = Widget $ Transient $ do
-   id <- genNewId
-   setData $ RadioId id
-   fs <- mapM runView  ws
-   let mx = mconcat fs
-   delData $ RadioId id
-   return $ fmap (\(Radio r) -> r) mx
+   ::  [Widget (Radio a)] -> Widget a
+getRadio ws =  do
+  id <- genNewId
+  setData $ RadioId id
+  Radio x <- foldr (<|>) empty ws <*** delData (RadioId id)
+  return x
 
 
-data CheckBoxes a= CheckBoxes [a] deriving Show
+newtype CheckBoxes a= CheckBoxes [a] deriving Monoid
 
-instance Monoid (CheckBoxes a) where
-  mappend (CheckBoxes xs) (CheckBoxes ys)= CheckBoxes $ xs ++ ys
-  mempty= CheckBoxes []
-
-
--- | Display a text box and return the value entered if it is readable( Otherwise, fail the validation)
+-- | present a checkbox
 setCheckBox :: (Typeable a , Show a) =>
                 Bool -> a -> Widget  (CheckBoxes a)
 setCheckBox checked' v= Widget . Transient $ do
   n  <- genNewId
-  st <- get
---  setData HasElems
   me <- elemBySeq n
-
-
   let showv= toJSString (if typeOf v == typeOf (undefined :: String)
                              then unsafeCoerce v
                              else show v)
@@ -566,27 +563,26 @@ setCheckBox checked' v= Widget . Transient $ do
             checked <- liftIO $ getProp e "checked"
             return . Just . CheckBoxes $ if  checked=="true"  then [v] else []
 
-
+-- Read the checkboxes
 getCheckBoxes ::  Show a => Widget  (CheckBoxes a) ->  Widget  [a]
-getCheckBoxes w = Widget $ Transient $ do
-   mrs <- runView w
-   case mrs of
-     Nothing -> return Nothing
-     Just(CheckBoxes rs ) ->   return $ Just rs
+getCheckBoxes w =  do
+  CheckBoxes rs <-  w
+  return rs
+ 
 
 whidden :: (Read a, Show a, Typeable a) => a -> Widget a
 whidden x= res where
  res= Widget . Transient $ do
-      n <- genNewId
-      let showx= case cast x of
-                  Just x' -> x'
-                  Nothing -> show x
-      r <- getParam1 False n  `asTypeOf` typef res
-      addSData (finput n "hidden" (toJSString showx) False Nothing :: Perch)
-      return (valToMaybe r)
-      where
-      typef :: Widget a -> StateIO (ParamResult Perch a)
-      typef = undefined
+    n <- genNewId
+    let showx= case cast x of
+                Just x' -> x'
+                Nothing -> show x
+    r <- getParam1 False n  `asTypeOf` typef res
+    addSData (finput n "hidden" (toJSString showx) False Nothing :: Perch)
+    return (valToMaybe r)
+    where
+    typef :: Widget a -> StateIO (ParamResult Perch a)
+    typef = undefined
 
 
 
@@ -617,7 +613,7 @@ getParamS look type1 mvalue= do
               else if typeOf v== typeOf (undefined :: JSString) then unsafeCoerce v
               else toJSString $ show v             -- !!> "show"
 
-    setData HasElems
+    -- setData HasElems
     r <- getParam1 (isJust look) tolook
     
     case r of
@@ -1105,7 +1101,7 @@ fromStr = toElem
 --     fromStrNoEncode  = toElem
 ftag n v =  nelem n `child` v
 
---     attrs tag  [] = tag
+attrs tag  [] = tag
 attrs tag (nv:attribs) = attrs (attr tag nv) attribs
 
 inred msg=  ftag "b" msg `attrs` [("style","color:red")]
@@ -1115,6 +1111,7 @@ finput n t v f c=
         tag= input ! atr "type" t ! id   n ! atr "value"   v
         tag1= if f then tag ! atr "checked" "" else tag
        in case c of Just s -> tag1 ! atr "onclick" s; _ -> tag1
+
 
 ftextarea nam text=
          textarea ! id  nam $ text
@@ -1656,7 +1653,7 @@ data UpdateMethod= Append | Prepend | Insert deriving Show
 at ::  JSString -> UpdateMethod -> Widget a -> Widget  a
 at id method w= setAt id method <<< do
   original@(IdLine level i) <- Widget $ getState <|> error "IdLine not defined"
-  setState $ IdLine level  "n0p0"
+  setState $ IdLine level  $ JS.tail id -- "n0p0"
   w  `with` setState original
   where
   with    (Widget (Transient x)) (Widget (Transient y))=
