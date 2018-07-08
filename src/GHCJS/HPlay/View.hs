@@ -66,6 +66,7 @@ module GHCJS.HPlay.View(
   , BrowserEvent(..)
   -- * Out of Flow Updates
   , UpdateMethod(..)
+  , setRenderTag
   , at, at'
   -- * Reactive and Events
   , IsEvent(..)
@@ -1645,6 +1646,9 @@ option x v=  wlink x (toElem v) <++ " "
 
 data UpdateMethod= Append | Prepend | Insert deriving Show
 
+-- | set the tag where subsequent `render` calls will place HTML-DOM element
+setRenderTag :: MonadState EventF m => JSString -> m ()
+setRenderTag id=  modifyData' (\(IdLine level _) -> IdLine level   id) (IdLine 0 id) >> return () 
 
 
 -- | Run the widget as the content of the element with the given path identifier. The content can
