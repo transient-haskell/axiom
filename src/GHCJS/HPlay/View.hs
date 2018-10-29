@@ -162,11 +162,7 @@ type JSString = String
 
 #endif
 
----- | if invoked from the browser, run A computation in the web server and return to the browser
---atServer :: Loggable a => Cloud a -> Cloud a
---atServer proc= do
---     server <- onAll getSData <|> error "server not set, use 'setData serverNode'"
---     runAt server  proc
+
 
 toJSString :: (Show a, Typeable a) => a -> JSString
 toJSString x =
@@ -1678,6 +1674,7 @@ at id method w= setAt id method <<< do
 setAt :: JSString -> UpdateMethod -> Perch  -> Perch
 setAt id method render  = liftIO $   case method of
      Insert -> do
+
              forElems_ id $ clear >> render
              return ()
      Append -> do
@@ -1695,8 +1692,9 @@ setAt id method render  = liftIO $   case method of
                              build render span
                              return e
 
+-- | a version of `at` for the Cloud monad.
 at' ::  JSString -> UpdateMethod -> Cloud a -> Cloud  a
-at'  id method w= setAt id method `insert` w
+at' id method w= setAt id method `insert` w
     where
     insert v comp=   Cloud . Transient $ do
           rest <- getData `onNothing` return noHtml
