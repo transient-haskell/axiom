@@ -265,8 +265,17 @@ instance Applicative Widget where
 
 instance Monoid a => Monoid (Widget a) where
   mempty= return mempty
-  mappend x y= do 
-     (<>) <$> x  <*> y
+
+#if MIN_VERSION_base(4,11,0) 
+  mappend= (<>)
+
+instance (Monoid a) => Semigroup (Widget a) where
+  (<>)=  mappendw
+#else
+  mappend= mappendw
+#endif  
+  
+mappendw x y=  (<>) <$> x  <*> y
 
 instance AdditionalOperators Widget where
 
@@ -544,7 +553,7 @@ getRadio ws =  do
   return x
 
 
-newtype CheckBoxes a= CheckBoxes [a] deriving Monoid
+newtype CheckBoxes a= CheckBoxes [a] deriving (Semigroup,Monoid)
 
 -- | present a checkbox
 setCheckBox :: (Typeable a , Show a) =>
@@ -674,7 +683,7 @@ getSelect opts = res where
     typef = undefined
 
 
-newtype MFOption a = MFOption a deriving (Typeable, Monoid)
+newtype MFOption a = MFOption a deriving (Typeable, Semigroup, Monoid)
 
 
 
