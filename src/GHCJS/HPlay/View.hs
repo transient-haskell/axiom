@@ -103,6 +103,7 @@ module GHCJS.HPlay.View(
   ,edit
   ,JSString,pack, unpack
   ,RadioId(..), Radio(..)
+  ,AlternativeBranch(..)
 
 )  where
 
@@ -549,7 +550,22 @@ getRadio ws =  do
   return x
 
 
-newtype CheckBoxes a= CheckBoxes [a] deriving (Semigroup,Monoid)
+newtype CheckBoxes a= CheckBoxes [a] 
+
+instance Monoid a => Monoid (CheckBoxes a) where
+  mempty= CheckBoxes []
+
+#if MIN_VERSION_base(4,11,0) 
+  mappend= (<>)
+
+instance (Monoid a) => Semigroup (CheckBoxes a) where
+  (<>)=  mappendch
+#else
+  mappend= mappendch
+#endif  
+  
+mappendch (CheckBoxes x) (CheckBoxes y)=  CheckBoxes (x ++ y)
+
 
 -- | present a checkbox
 setCheckBox :: (Typeable a , Show a) =>
@@ -679,9 +695,21 @@ getSelect opts = res where
     typef = undefined
 
 
-newtype MFOption a = MFOption a deriving (Typeable, Semigroup, Monoid)
+newtype MFOption a = MFOption a deriving Typeable
 
+instance Monoid a => Monoid (MFOption a) where
+  mempty= MFOption mempty
 
+#if MIN_VERSION_base(4,11,0) 
+  mappend= (<>)
+
+instance (Monoid a) => Semigroup (MFOption a) where
+  (<>)=  mappendop
+#else
+  mappend= mappendop
+#endif  
+  
+mappendop (MFOption x) (MFOption y)=  MFOption (x <> y)
 
 -- | Set the option for getSelect. Options are concatenated with `<|>`
 setOption
@@ -1546,7 +1574,7 @@ render  mx = Transient $ do
 
 
 
-       ma <- getData
+       ma <- getData 
        mw <- getData 
        
        id1 <- if (isJust (ma :: Maybe AlternativeBranch) || mw == Just WasParallel )   !> (mw)
