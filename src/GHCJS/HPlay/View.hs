@@ -79,6 +79,8 @@ module GHCJS.HPlay.View(
   , fire
   , wake
   , pass
+  -- * utility
+  , clearScreen 
   -- * Low-level and Internals
   , ElemID
   , getNextId
@@ -103,7 +105,7 @@ module GHCJS.HPlay.View(
   ,edit
   ,JSString,pack, unpack
   ,RadioId(..), Radio(..)
-  ,AlternativeBranch(..)
+
 
 )  where
 
@@ -770,6 +772,11 @@ wbutton x label= Widget $ Transient $ do
         input  ! atr "type" "submit" ! id   idn ! atr "value" label `pass` OnClick
         return x
       `continuePerch`  idn
+
+
+clearScreen=  local  $ do
+   render . wraw $ forElems "body" $ this  >> clear `child` (div ! atr "id" "body1" $ noHtml)
+   setRenderTag "body1"
 
 
 -- | when creating a complex widget with many tags, this call indentifies which tag will receive the attributes of the (!) operator.
