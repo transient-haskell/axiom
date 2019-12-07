@@ -516,7 +516,7 @@ setRadio ch v = Widget $ Transient $ do
   
   let str = if typeOf v == typeOf(undefined :: String)
                    then unsafeCoerce v else show v
-  setData WasParallel
+  modify $ \s -> s{remoteStatus= WasParallel}  -- setData  WasParallel
   addSData
       ( finput id "radio" (toJSString str)  ch Nothing `attrs` [("name",name)] :: Perch)
   
@@ -571,7 +571,8 @@ setCheckBox checked' v= Widget . Transient $ do
                              else show v)
 
   addSData $  ( finput n "checkbox" showv  checked' Nothing :: Perch)
-  setData WasParallel; 
+  modify $ \s -> s{remoteStatus= WasParallel}  -- setData  WasParallel
+
   case me of
        Nothing -> do return . Just . CheckBoxes $ if checked'== True  then [v] else []
        Just e -> do
@@ -593,7 +594,8 @@ whidden x= res where
                 Just x' -> x'
                 Nothing -> show x
     -- r <- getParam1 False n  `asTypeOf` typef res
-    setData WasParallel
+    modify $ \s -> s{remoteStatus= WasParallel}  -- setData  WasParallel
+
     addSData (finput n "hidden" (toJSString showx) False Nothing :: Perch)
     return $ Just x -- $ valToMaybe r
     where
@@ -635,7 +637,8 @@ getParamS look type1 mvalue= do
 
 
     r <- getParam1 (isJust look) tolook
-    setData WasParallel 
+    modify $ \s -> s{remoteStatus= WasParallel}  -- setData  WasParallel
+ 
     case r of
        Validated x        -> do addSData (finput tolook type1 (nvalue $ Just x) False Nothing :: Perch) ; return $ Just x            -- !!> "validated"
        NotValidated s err -> do addSData (finput tolook type1  (toJSString s) False Nothing <> err :: Perch); return Nothing
@@ -651,7 +654,7 @@ getMultilineText nvalue =  res <|> return (unpack nvalue) where
  res= Widget. Transient $ do
     Seq tolook <- getData `onNothing`  (Seq  <$> genNewId) -- tolook <- genNewId   !>  "GETMULTI"
     r <- getParam1 False tolook  `asTypeOf` typef res
-    setData WasParallel;
+    modify $ \s -> s{remoteStatus= WasParallel}  -- setData  WasParallel
     case r of
        Validated x        -> do addSData (ftextarea tolook  $ toJSString x :: Perch); return $ Just x     !> "VALIDATED"
        NotValidated s err -> do addSData (ftextarea tolook   (toJSString s) :: Perch); return  Nothing    !> "NOTVALIDATED"
