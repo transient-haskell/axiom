@@ -162,10 +162,9 @@ import           Transient.Move
 
 #ifndef ghcjs_HOST_OS
 type JSString = String
-
+#else
+instance Loggable JSString
 #endif
-
-
 
 toJSString :: (Show a, Typeable a) => a -> JSString
 toJSString x =
