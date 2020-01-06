@@ -642,7 +642,7 @@ getParamS look type1 mvalue= do
     case r of
        Validated x        -> do addSData (finput tolook type1 (nvalue $ Just x) False Nothing :: Perch) ; return $ Just x            -- !!> "validated"
        NotValidated s err -> do addSData (finput tolook type1  (toJSString s) False Nothing <> err :: Perch); return Nothing
-       NoParam            -> do setData WasParallel;addSData (finput tolook type1 (nvalue mvalue) False Nothing :: Perch); return  Nothing
+       NoParam            -> do modify $ \s -> s{execMode=Parallel};addSData (finput tolook type1 (nvalue mvalue) False Nothing :: Perch); return  Nothing
 
 
 
@@ -657,7 +657,7 @@ getMultilineText nvalue =  res where
     case r of
        Validated x        -> do addSData (ftextarea tolook  $ toJSString x :: Perch); return $ Just x     !> "VALIDATED"
        NotValidated s err -> do addSData (ftextarea tolook   (toJSString s) :: Perch); return  Nothing    !> "NOTVALIDATED"
-       NoParam            -> do setData WasParallel;addSData (ftextarea tolook  nvalue :: Perch); return  Nothing  !> "NOTHING"
+       NoParam            -> do modify $ \s -> s{execMode=Parallel};addSData (ftextarea tolook  nvalue :: Perch); return  Nothing  !> "NOTHING"
     where
     typef :: Widget String -> StateIO (ParamResult Perch String)
     typef = undefined
@@ -1581,9 +1581,9 @@ render  mx = Transient $ do
 
 
        ma <- getData 
-       mw <- getData 
+       mw <- gets execMode 
        
-       id1 <- if (isJust (ma :: Maybe AlternativeBranch) || mw == Just WasParallel )   !> (mw)
+       id1 <- if (isJust (ma :: Maybe AlternativeBranch) || mw ==  Parallel )   !> (mw)
                then do
                  id3 <- do
                      id3 <- genNewId !> "ALTERNATIVE"
