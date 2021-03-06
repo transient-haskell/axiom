@@ -1,3 +1,13 @@
+IMPORTANT NOTE: Transient is being translated to a new repo
+
+THIS REPO IS DEPRECATED
+
+Please, for the last version, go to:
+
+https://github.com/transient-haskell/transient-stack
+
+There is all the haskell packages, including distributed computing (transient-universe) and client-side web (axiom)
+
 ![Axiom logo](axiom.png)
 ==========
 [![Hackage](https://img.shields.io/hackage/v/axiom.svg)](http://hackage.haskell.org/package/axiom)
